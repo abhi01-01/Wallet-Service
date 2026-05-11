@@ -1,0 +1,30 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:wallettest;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  flyway:
+    enabled: false
+  mail:
+    host: localhost
+    port: 25
+    username: test@example.com
+    password: password
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: dummy-id
+            client-secret: dummy-secret
+
+jwt:
+  secret: dummy-secret
+  expiration-ms: 3600000
