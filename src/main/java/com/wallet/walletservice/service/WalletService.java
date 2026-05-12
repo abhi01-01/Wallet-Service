@@ -15,6 +15,7 @@ import com.wallet.walletservice.dto.request.SpendRequest;
 import com.wallet.walletservice.dto.response.BalanceResponse;
 import com.wallet.walletservice.dto.response.LedgerHistoryResponse;
 import com.wallet.walletservice.dto.response.TransactionResponse;
+import com.wallet.walletservice.exception.AssetTypeNotFoundException;
 import com.wallet.walletservice.exception.InsufficientBalanceException;
 import com.wallet.walletservice.exception.WalletNotFoundException;
 import com.wallet.walletservice.repository.AssetTypeRepository;
@@ -183,7 +184,7 @@ public class WalletService {
 
     private Wallet createWallet(String ownerId, String assetCode){
         AssetType assetType = assetTypeRepository.findByCode(assetCode)
-                .orElseThrow(() -> new RuntimeException("Can't create wallet: Invalid asset code " + assetCode)) ;
+                .orElseThrow(() -> new AssetTypeNotFoundException(assetCode));
 
         OwnerType type = ownerId.equals(SYSTEM_TREASURY) ? OwnerType.SYSTEM : OwnerType.USER ;
 

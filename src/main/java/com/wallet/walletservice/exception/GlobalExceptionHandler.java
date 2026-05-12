@@ -36,6 +36,13 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(ex.getMessage()));
     }
 
+    @ExceptionHandler(AssetTypeNotFoundException.class)
+    public ResponseEntity<ApiResponse<?>> handleAssetTypeNotFound(AssetTypeNotFoundException ex){
+        log.warn("Asset Type Not Found: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
     @ExceptionHandler(DuplicateTransactionException.class)
     public ResponseEntity<ApiResponse<?>> handleDuplicate(DuplicateTransactionException ex){
         log.warn("Duplicate Transaction: {}", ex.getMessage());
@@ -47,6 +54,13 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<?>> handleAuth(AuthException ex) {
         log.warn("Auth Exception: {}", ex.getMessage());
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    @ExceptionHandler(PaymentException.class)
+    public ResponseEntity<ApiResponse<?>> handlePayment(PaymentException ex) {
+        log.warn("Payment Exception: {}", ex.getMessage());
+        return ResponseEntity.status(ex.getStatus())
                 .body(ApiResponse.error(ex.getMessage()));
     }
 
@@ -105,7 +119,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<?>> handleGeneral(Exception ex){
         log.error("Unexpected Error: ", ex);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(ApiResponse.error("Internal error: " + ex.getMessage()));
+                .body(ApiResponse.error("Internal server error"));
     }
 
 }
