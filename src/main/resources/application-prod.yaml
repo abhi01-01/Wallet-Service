@@ -1,0 +1,18 @@
+logging:
+  level:
+    root: INFO
+    com.wallet.walletservice: INFO
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+
+spring:
+  web:
+    error:
+      include-message: never
+      include-binding-errors: never
+      include-stacktrace: never
+      include-exception: false

@@ -1,0 +1,14 @@
+spring:
+  config:
+    import: "optional:file:.env[.properties]"
+
+logging:
+  level:
+    root: INFO
+    com.wallet.walletservice: DEBUG
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
