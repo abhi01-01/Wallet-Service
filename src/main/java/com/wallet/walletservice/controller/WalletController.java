@@ -3,14 +3,13 @@ package com.wallet.walletservice.controller;
 import com.wallet.walletservice.dto.request.BonusRequest;
 import com.wallet.walletservice.dto.request.SpendRequest;
 import com.wallet.walletservice.dto.request.TopUpRequest;
-import com.wallet.walletservice.dto.response.ApiResponse;
 import com.wallet.walletservice.dto.response.BalanceResponse;
 import com.wallet.walletservice.dto.response.LedgerHistoryResponse;
 import com.wallet.walletservice.dto.response.TransactionResponse;
 import com.wallet.walletservice.exception.AuthException;
 import com.wallet.walletservice.service.WalletService;
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -26,8 +25,7 @@ import java.util.Set;
 @RestController
 @RequestMapping("/api/v1/wallets")
 @RequiredArgsConstructor
-@Tag(name = "Wallet API", description = "Internal Wallet Service")
-@SecurityRequirement(name = "bearerAuth")
+@Tag(name = "Wallet", description = "Endpoints for managing user wallets, balances, and transactions")
 public class WalletController {
 
     private final WalletService walletService;
@@ -35,79 +33,77 @@ public class WalletController {
     @Value("${wallet.security.authorized-system-ids:}")
     private Set<String> authorizedSystemIds;
 
-    /**
-     * USER: can only view their own balance.
-     * SYSTEM: can view any user's balance.
-     *
-     * @AuthenticationPrincipal resolves to the userId (JWT subclaim).
-     */
-
     @GetMapping("/{userId}/balance")
-    @PreAuthorize("hasRole('SYSTEM') or (hasRole('USER') and #userId == #principal)")
-    @Operation(summary = "Get all wallet balances for a user")
-    public ResponseEntity<ApiResponse<BalanceResponse>> getBalance(
-            @PathVariable String userId,
-            @AuthenticationPrincipal String principal
+    @PreAuthorize("hasRole('USER') and #userId == authentication.name")
+    @Operation(summary = "Get wallet balances", description = "Retrieve all asset balances for the authenticated user.")
+    @ApiResponses(value = {
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Balances retrieved successfully"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden - Unauthorized access to user balance"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Wallet not found")
+    })
+    public ResponseEntity<com.wallet.walletservice.dto.response.ApiResponse<BalanceResponse>> getBalance(
+            @PathVariable String userId
     ){
-        return ResponseEntity.ok(ApiResponse.ok(walletService.getBalance(userId)));
+        return ResponseEntity.ok(com.wallet.walletservice.dto.response.ApiResponse.ok(walletService.getBalance(userId)));
     }
 
-    /**
-     * SYSTEM only — credits user wallet from system treasury.
-     * Restricted to specific whitelisted SYSTEM account IDs.
-     */
     @PostMapping("/topUp")
     @PreAuthorize("hasRole('SYSTEM')")
-    @Operation(summary = "Top-up: credit a user wallet (simulate real-money purchase) — SYSTEM only")
-    public ResponseEntity<ApiResponse<TransactionResponse>> topUp(
+    @Operation(summary = "Top-up wallet (System Only)", description = "Credit a user's wallet from the system treasury. Whitelisted system accounts only.")
+    @ApiResponses(value = {
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Top-up successful"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden - System account not authorized")
+    })
+    public ResponseEntity<com.wallet.walletservice.dto.response.ApiResponse<TransactionResponse>> topUp(
             @Valid @RequestBody TopUpRequest req,
             @AuthenticationPrincipal String principal){
         validateSystemAccess(principal);
-        return ResponseEntity.ok(ApiResponse.ok("Top-up successful", walletService.topUp(req)));
+        return ResponseEntity.ok(com.wallet.walletservice.dto.response.ApiResponse.ok("Top-up successful", walletService.topUp(req)));
     }
 
-    /**
-     * SYSTEM only — issues free bonus credits.
-     * Restricted to specific whitelisted SYSTEM account IDs.
-     */
     @PostMapping("/bonus")
     @PreAuthorize("hasRole('SYSTEM')")
-    @Operation(summary = "Bonus: system issues free credits to a user — SYSTEM only")
-    public ResponseEntity<ApiResponse<TransactionResponse>> bonus(
+    @Operation(summary = "Issue bonus (System Only)", description = "Issue free credits to a user. Whitelisted system accounts only.")
+    @ApiResponses(value = {
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Bonus issued successfully"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden - System account not authorized")
+    })
+    public ResponseEntity<com.wallet.walletservice.dto.response.ApiResponse<TransactionResponse>> bonus(
             @Valid @RequestBody BonusRequest req,
             @AuthenticationPrincipal String principal){
         validateSystemAccess(principal);
-        return ResponseEntity.ok(ApiResponse.ok("Bonus issued successfully", walletService.issueBonus(req)));
+        return ResponseEntity.ok(com.wallet.walletservice.dto.response.ApiResponse.ok("Bonus issued successfully", walletService.issueBonus(req)));
     }
 
-    /**
-     * USER only — spends from their own wallet.
-     * Enforces that the spending userId matches the authenticated user.
-     */
     @PostMapping("/spend")
     @PreAuthorize("hasRole('USER')")
-    @Operation(summary = "Spend: user spends credits on an in-app service — USER only")
-    public ResponseEntity<ApiResponse<TransactionResponse>> spend(
+    @Operation(summary = "Spend credits", description = "Spend credits from the authenticated user's wallet for in-app services.")
+    @ApiResponses(value = {
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Spend successful"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Insufficient balance"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden - Cannot spend from another user's wallet")
+    })
+    public ResponseEntity<com.wallet.walletservice.dto.response.ApiResponse<TransactionResponse>> spend(
             @Valid @RequestBody SpendRequest req,
             @AuthenticationPrincipal String principal){
-        // Prevent users from spending on behalf of another user
         if(!req.getUserId().equals(principal)){
              throw new AuthException("You can only spend from your own wallet");
         }
-        return ResponseEntity.ok(ApiResponse.ok("Spend Successful", walletService.spend(req)));
+        return ResponseEntity.ok(com.wallet.walletservice.dto.response.ApiResponse.ok("Spend Successful", walletService.spend(req)));
     }
 
-    /**
-     * USER: own ledger only. SYSTEM: any ledger.
-     */
     @GetMapping("/{userId}/ledger")
-    @PreAuthorize("hasRole('SYSTEM') or (hasRole('USER') and #userId == #principal)")
-    @Operation(summary = "Get ledger history for a user's specific asset wallet")
-    public ResponseEntity<ApiResponse<List<LedgerHistoryResponse>>> getLedger(
+    @PreAuthorize("hasRole('SYSTEM') or (hasRole('USER') and #userId == authentication.name)")
+    @Operation(summary = "Get ledger history", description = "Retrieve the transaction history for a specific asset in a user's wallet.")
+    @ApiResponses(value = {
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Ledger history retrieved successfully"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Asset or Wallet not found")
+    })
+    public ResponseEntity<com.wallet.walletservice.dto.response.ApiResponse<List<LedgerHistoryResponse>>> getLedger(
             @PathVariable String userId,
-            @RequestParam String assetCode,
-            @AuthenticationPrincipal String principal){
-        return ResponseEntity.ok(ApiResponse.ok(walletService.getLedgerHistory(userId, assetCode)));
+            @RequestParam String assetCode
+    ){
+        return ResponseEntity.ok(com.wallet.walletservice.dto.response.ApiResponse.ok(walletService.getLedgerHistory(userId, assetCode)));
     }
 
     private void validateSystemAccess(String principal) {

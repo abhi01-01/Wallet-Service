@@ -51,14 +51,6 @@ public class JwtTokenProvider {
                 .getPayload();
     }
 
-    public String getUserIdFromToken(String token){
-        return validateAndParseClaims(token).getSubject() ;
-    }
-
-    public String getOwnerTypeFromToken(String token){
-        return validateAndParseClaims(token).get("ownerType", String.class);
-    }
-
     public boolean isTokenValid(String token){
         try {
             validateAndParseClaims(token);
