@@ -1,0 +1,56 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:wallettest;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+    hikari:
+      pool-name: WalletServiceTestHikariPool
+      auto-commit: false
+      maximum-pool-size: 5
+      minimum-idle: 1
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      validation-timeout: 5000
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+    properties:
+      hibernate:
+        jdbc:
+          fetch_size: 50
+  flyway:
+    enabled: false
+  mail:
+    host: localhost
+    port: 25
+    username: test@example.com
+    password: password
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: dummy-id
+            client-secret: dummy-secret
+
+jwt:
+  secret: dummy-secret-for-tests-only-dummy-secret-for-tests-only
+  expiration-ms: 3600000
+
+razorpay:
+  key:
+    id: rzp_test_dummy
+    secret: dummy_razorpay_secret
+
+wallet:
+  security:
+    authorized-system-ids: SYSTEM_TREASURY
+
+logging:
+  level:
+    root: WARN
+    com.wallet.walletservice: INFO
