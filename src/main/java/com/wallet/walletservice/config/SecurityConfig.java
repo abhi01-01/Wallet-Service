@@ -34,7 +34,8 @@ public class SecurityConfig {
             "/api-docs.yaml",
             "/swagger-resources/**",
             "/configuration/**",
-            "/webjars/**"
+            "/webjars/**",
+            "/actuator/**"
     };
 
     @Bean
