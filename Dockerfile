@@ -44,5 +44,11 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 COPY --from=builder /app/target/*.jar app.jar
 USER appuser
 
-EXPOSE 8080
-ENTRYPOINT ["java", "-jar", "app.jar"]
+# Map Render's PORT variable to Spring Boot's expected SERVER_PORT
+ENV SERVER_PORT=${PORT:-8080}
+EXPOSE $SERVER_PORT
+
+#ENTRYPOINT ["java", "-jar", "app.jar"]
+
+# Restrict heap to 300MB, leaving 212MB for native memory, thread stacks, and Metaspace, because Render free provides only 512MB RAM
+ENTRYPOINT ["java", "-XX:+UseSerialGC", "-Xmx300m", "-Xss512k", "-XX:MaxMetaspaceSize=128m", "-jar", "app.jar"]
