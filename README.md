@@ -2,6 +2,7 @@
 
 A high-performance, financially rigorous digital wallet service built with Spring Boot 4. The service manages user wallets, supports multiple asset types, records every balance movement through a double-entry ledger, and now integrates with Razorpay so authenticated users can purchase wallet credits through real payment orders.
 
+* [Initial Requirement](https://drive.google.com/file/d/1PTFW5_xbD04Lx3RW_QgvM-MmMYp23y78/view?usp=sharing)
 ---
 
 ## 📌 What This Project Is

@@ -11,6 +11,8 @@ env:
   DOCKER_USERNAME: ${{secrets.DOCKER_USERNAME}}
   DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
   IMAGE_NAME: wallet-service
+  # Forces all actions to execute on the Node 24 runtime
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build-test-publish-deploy:
