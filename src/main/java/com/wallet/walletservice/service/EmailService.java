@@ -1,48 +1,86 @@
 package com.wallet.walletservice.service;
 
-import jakarta.mail.internet.MimeMessage;
+import com.wallet.walletservice.config.BrevoProperties;
 import lombok.NonNull;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.MimeMessageHelper;
+import okhttp3.*;
+import org.json.JSONArray;
+import org.json.JSONObject;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
+import java.io.IOException;
+
 @Service
 @Slf4j
+@RequiredArgsConstructor
 public class EmailService {
 
-    private final JavaMailSender mailSender;
-    private final String fromAddress;
+    private final BrevoProperties brevoProperties;
+    private final OkHttpClient httpClient = new OkHttpClient();
 
-    public EmailService(
-            JavaMailSender mailSender,
-            @Value("${spring.mail.username}") @NonNull String fromAddress) {
-        this.mailSender = mailSender;
-        this.fromAddress = fromAddress;
-    }
+    @Async
+    public void sendOtpEmail(@NonNull String toEmail, @NonNull String otp) {
+        String apiKey = brevoProperties.getApi().getKey();
+        String senderEmail = brevoProperties.getApi().getSenderEmail();
+        String senderName = brevoProperties.getApi().getSenderName();
 
-    @Async      // Prevents SMTP network latency from blocking the main Tomcat thread
-    public void sendOtpEmail(@NonNull String toEmail, @NonNull String otp){
+        if (apiKey == null || apiKey.isBlank() || senderEmail == null || senderEmail.isBlank()) {
+            log.error("[EmailService] CRITICAL: Brevo configuration is missing. Check your environment variables.");
+            return;
+        }
+
         try {
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            // Brevo API Payload construction
+            JSONObject payload = new JSONObject();
+            
+            JSONObject sender = new JSONObject();
+            sender.put("name", senderName != null ? senderName : "Wallet Service");
+            sender.put("email", senderEmail);
+            payload.put("sender", sender);
 
-            helper.setFrom(fromAddress);
-            helper.setTo(toEmail);
-            helper.setSubject("Your walletService Verification code");
-            helper.setText(buildOtpEmailHtml(otp), true);   // true = HTML
+            JSONObject to = new JSONObject();
+            to.put("email", toEmail);
+            JSONArray toArray = new JSONArray();
+            toArray.put(to);
+            payload.put("to", toArray);
 
-            mailSender.send(message);
-            log.info("OTP email sent to {} {}", toEmail, otp);
+            payload.put("subject", "Your WalletService Verification code");
+            payload.put("htmlContent", buildOtpEmailHtml(otp));
 
+            RequestBody body = RequestBody.create(
+                    payload.toString(),
+                    MediaType.parse("application/json; charset=utf-8")
+            );
+
+            Request request = new Request.Builder()
+                    .url("https://api.brevo.com/v3/smtp/email")
+                    .addHeader("api-key", apiKey)
+                    .addHeader("Content-Type", "application/json")
+                    .addHeader("Accept", "application/json")
+                    .post(body)
+                    .build();
+
+            try (Response response = httpClient.newCall(request).execute()) {
+                if (response.isSuccessful()) {
+                    log.info("[EmailService] SUCCESS: OTP email sent via Brevo to {} (Message ID: {})", 
+                        toEmail, response.body() != null ? new JSONObject(response.body().string()).optString("messageId") : "N/A");
+                } else {
+                    String errorBody = response.body() != null ? response.body().string() : "No error body";
+                    log.error("[EmailService] API_ERROR: Brevo rejected request. Status: {} | Reason: {}", 
+                        response.code(), errorBody);
+                }
+            }
+
+        } catch (IOException e) {
+            log.error("[EmailService] NETWORK_ERROR: Failed to connect to Brevo API. Error: {}", e.getMessage());
         } catch (Exception e) {
-            log.error("Failed to send OTP email to {}: {}", toEmail, e.getMessage());
+            log.error("[EmailService] UNEXPECTED_ERROR: Internal error sending email to {}. Error: {}", toEmail, e.getMessage());
         }
     }
 
-    private String buildOtpEmailHtml(String otp){
+    private String buildOtpEmailHtml(String otp) {
         return """
                 <!DOCTYPE html>
                             <html>
@@ -62,7 +100,6 @@ public class EmailService {
                               </div>
                             </body>
                             </html>
-                """.formatted(otp) ;
+                """.formatted(otp);
     }
-
 }
