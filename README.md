@@ -203,7 +203,7 @@ http://localhost:8080/swagger-ui.html
 
 1. Create a local PostgreSQL database named `walletdb`.
 2. Copy `.env.example` to `.env`.
-3. Configure database, JWT, mail, Google OAuth, and Razorpay values.
+3. Configure database, JWT, Brevo API, Google OAuth, and Razorpay values.
 4. Start the service:
 
 ```bash
@@ -217,8 +217,9 @@ http://localhost:8080/swagger-ui.html
 | `SPRING_DATASOURCE_USERNAME` | PostgreSQL username for local app connection |
 | `SPRING_DATASOURCE_PASSWORD` | PostgreSQL password for local app connection |
 | `JWT_SECRET` | Secret used to sign JWT access tokens |
-| `MAIL_USERNAME` | SMTP username for OTP email delivery |
-| `MAIL_PASSWORD` | SMTP password or app password |
+| `BREVO_API_KEY` | API key for Brevo HTTP email delivery |
+| `BREVO_SENDER_EMAIL` | Verified sender email address on Brevo |
+| `MAIL_SENDER_NAME` | Display name for the email sender |
 | `GOOGLE_CLIENT_ID` | Google OAuth client id |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
 | `RAZORPAY_KEY_ID` | Razorpay API key id |
