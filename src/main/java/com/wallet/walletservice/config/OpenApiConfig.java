@@ -12,7 +12,7 @@ import org.springframework.context.annotation.Configuration;
     info = @Info(
         title = "Wallet Service API",
         version = "1.0",
-        description = "Documentation for Wallet Service API with JWT Authentication"
+        description = "Documentation for Wallet Service API. Email delivery is powered by Brevo HTTP API."
     ),
     security = @SecurityRequirement(name = "bearerAuth")
 )
