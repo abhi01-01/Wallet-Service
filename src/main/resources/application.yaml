@@ -34,13 +34,6 @@ spring:
   flyway:
     enabled: true
     baseline-on-migrate: true
-
-brevo:
-  api:
-    key: ${BREVO_API_KEY}
-    sender-email: ${BREVO_SENDER_EMAIL}
-    sender-name: ${MAIL_SENDER_NAME}
-
   security:
     oauth2:
       client:
@@ -48,7 +41,6 @@ brevo:
           google:
             client-id: ${GOOGLE_CLIENT_ID}
             client-secret: ${GOOGLE_CLIENT_SECRET}
-
 server:
   port: 8080
 
@@ -89,3 +81,9 @@ razorpay:
 wallet:
   security:
     authorized-system-ids: ${AUTHORIZED_SYSTEM_IDS:}
+
+brevo:
+  api:
+    key: ${BREVO_API_KEY}
+    sender-email: ${BREVO_SENDER_EMAIL}
+    sender-name: ${MAIL_SENDER_NAME}
