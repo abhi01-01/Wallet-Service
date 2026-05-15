@@ -41,7 +41,8 @@ public class PaymentService {
             @Value("${razorpay.key.id}") String razorpayKeyId,
             @Value("${razorpay.key.secret}") String razorpayKeySecret,
             PaymentOrderRepository paymentOrderRepository,
-            WalletService walletService, UserRepository userRepository
+            WalletService walletService,
+            UserRepository userRepository
     ){
         this.razorpayKeyId = razorpayKeyId;
         this.razorpayKeySecret = razorpayKeySecret;
