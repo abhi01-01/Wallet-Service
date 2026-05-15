@@ -1,6 +1,8 @@
 package com.wallet.walletservice.config;
 
 import com.wallet.walletservice.domain.entity.User;
+import com.wallet.walletservice.domain.enums.UserStatus;
+import com.wallet.walletservice.exception.AuthException;
 import com.wallet.walletservice.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.NonNull;
@@ -23,6 +25,7 @@ public class UserDetailsServiceImpl implements UserDetailsService {
 
         // 1. Fetch Our customer domain User
         User user = userRepository.findByEmail(email)
+                .map(u -> { if (u.getAccountStatus() == UserStatus.CLOSED) throw new AuthException("Account is closed."); return u; })
                 .orElseThrow(() -> new UsernameNotFoundException("User not found: " + email));
 
         // 2. Map our domain roles (OwnerType.USER or OwnerType.SYSTEM) to spring security authorities

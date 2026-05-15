@@ -15,9 +15,8 @@ import com.wallet.walletservice.dto.request.SpendRequest;
 import com.wallet.walletservice.dto.response.BalanceResponse;
 import com.wallet.walletservice.dto.response.LedgerHistoryResponse;
 import com.wallet.walletservice.dto.response.TransactionResponse;
-import com.wallet.walletservice.exception.AssetTypeNotFoundException;
-import com.wallet.walletservice.exception.InsufficientBalanceException;
-import com.wallet.walletservice.exception.WalletNotFoundException;
+import com.wallet.walletservice.exception.*;
+import com.wallet.walletservice.exception.AccountClosureException;
 import com.wallet.walletservice.repository.AssetTypeRepository;
 import com.wallet.walletservice.repository.LedgerEntryRepository;
 import com.wallet.walletservice.repository.TransactionRepository;
@@ -167,6 +166,51 @@ public class WalletService {
                         .createdAt(e.getCreatedAt())
                         .build())
                 .collect(Collectors.toList());
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // 6.   ACCOUNT CLOSURE & FORFEITURE
+    // ──────────────────────────────────────────────────────────────
+
+    /**
+     * Executes the financial requirements for account closure.
+     * Evaluates all active wallets. If a positive balance exists, it requires explicit consent
+     * to forfeit the funds to the system treasury before allowing closure.
+     */
+
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public void handleAccountClosure(String userId, Boolean confirmForfeit){
+        List<Wallet> userWallets = walletRepository.findAllByOwnerId(userId);
+
+        boolean hasPositiveBalance = userWallets.stream()
+                .anyMatch(w -> w.getBalance().compareTo(BigDecimal.ZERO) > 0);
+
+        if(hasPositiveBalance && !confirmForfeit){
+            throw new AccountClosureException("Account holds a positive balance. Please withdraw funds or explicitly confirm forfeiture to proceed.");
+        }
+
+        if(hasPositiveBalance){
+            // Generate a unified business trace for the closure event
+            String closureTraceId = "closure_" + UUID.randomUUID() + "_" ;
+
+            for (Wallet wallet : userWallets){
+                if(wallet.getBalance().compareTo(BigDecimal.ZERO) > 0){
+                    processTransfer(
+                            closureTraceId + wallet.getAssetType().getCode(),
+                            wallet.getAssetType().getCode(),
+                            userId,
+                            SYSTEM_TREASURY,
+                            wallet.getBalance(),
+                            TransactionType.FORFEIT,
+                            "Account Closure Balance Forfeiture",
+                            () -> String.format("Forfeiture of %s %s due to account closure", wallet.getBalance(), wallet.getAssetType().getCode()),
+                            null,
+                            null
+                    );
+                    log.info("Forfeited {} {} from user {} to SYSTEM_TREASURY", wallet.getBalance(), wallet.getAssetType().getCode(), userId);
+                }
+            }
+        }
     }
 
     // ──────────────────────────────────────────────────────────────

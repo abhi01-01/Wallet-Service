@@ -10,6 +10,8 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -90,6 +92,51 @@ public class AuthController {
         log.info("Google login API called");
         AuthResponse auth = authService.googleLogin(req);
         return ResponseEntity.ok(com.wallet.walletservice.dto.response.ApiResponse.ok("Google login successful", auth));
+    }
+
+
+    @PostMapping("/refresh-token")
+    @Operation(summary = "Refresh Access Token", description = "Exchange a valid refresh token for a new short-lived access token.")
+    @ApiResponses(value = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Token refreshed successfully"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Invalid or expired refresh token")
+    })
+    public ResponseEntity<com.wallet.walletservice.dto.response.ApiResponse<AuthResponse>> refresh(
+            @Valid @RequestBody TokenRefreshRequest req){
+        log.info("Token refresh API called");
+        return ResponseEntity.ok(com.wallet.walletservice.dto.response.ApiResponse.ok(
+                "Token refreshed successfully", authService.refreshToken(req)));
+    }
+
+    @DeleteMapping("/close-account")
+    @PreAuthorize("hasRole('USER')")
+    @Operation(summary = "Close Account", description = "Permanently close user account, forfeit remaining balances if confirmed, and scrub PII.")
+    @ApiResponses(value = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Account closed successfully"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "Conflict - Positive balance without forfeit confirmation")
+    })
+    public ResponseEntity<com.wallet.walletservice.dto.response.ApiResponse<String>> closeAccount(
+            @AuthenticationPrincipal String userId,
+            @Valid @RequestBody AccountCloseRequest req){
+        log.info("Account closure requested for user: {}", userId);
+        authService.closeAccount(userId, req);
+        return ResponseEntity.ok(com.wallet.walletservice.dto.response.ApiResponse.ok(
+                "Account closed successfully. All active sessions terminated."));
+    }
+
+    @PostMapping("/logout")
+    @PreAuthorize("hasAnyRole('USER', 'SYSTEM')")
+    @Operation(summary = "Logout", description = "Revokes the targeted refresh token, terminating the specific device session.")
+    @ApiResponses(value = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Logged out successfully"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden - Token ownership mismatch")
+    })
+    public ResponseEntity<com.wallet.walletservice.dto.response.ApiResponse<String>> logout(
+            @Valid @RequestBody LogoutRequest req,
+            @AuthenticationPrincipal String userId){
+        log.info("Targeted Device logout requested for user: {}", userId);
+        authService.logout(req, userId);
+        return ResponseEntity.ok(com.wallet.walletservice.dto.response.ApiResponse.ok("Logged out successfully"));
     }
 
 }

@@ -5,20 +5,26 @@ import com.razorpay.RazorpayClient;
 import com.razorpay.RazorpayException;
 import com.razorpay.Utils;
 import com.wallet.walletservice.domain.entity.PaymentOrder;
+import com.wallet.walletservice.domain.entity.User;
 import com.wallet.walletservice.domain.enums.PaymentOrderStatus;
+import com.wallet.walletservice.domain.enums.UserStatus;
 import com.wallet.walletservice.dto.request.PaymentOrderRequest;
 import com.wallet.walletservice.dto.request.TopUpRequest;
 import com.wallet.walletservice.dto.response.PaymentOrderResponse;
+import com.wallet.walletservice.exception.AuthException;
 import com.wallet.walletservice.exception.PaymentException;
 import com.wallet.walletservice.repository.PaymentOrderRepository;
+import com.wallet.walletservice.repository.UserRepository;
 import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.util.UUID;
 
 @Service
 @Slf4j
@@ -28,18 +34,20 @@ public class PaymentService {
     private final String razorpayKeySecret;
     private final PaymentOrderRepository paymentOrderRepository;
     private final WalletService walletService;
+    private final UserRepository userRepository;
 
 
     public PaymentService(
             @Value("${razorpay.key.id}") String razorpayKeyId,
             @Value("${razorpay.key.secret}") String razorpayKeySecret,
             PaymentOrderRepository paymentOrderRepository,
-            WalletService walletService
+            WalletService walletService, UserRepository userRepository
     ){
         this.razorpayKeyId = razorpayKeyId;
         this.razorpayKeySecret = razorpayKeySecret;
         this.paymentOrderRepository = paymentOrderRepository;
         this.walletService = walletService;
+        this.userRepository = userRepository;
     }
 
     @Transactional
@@ -94,6 +102,10 @@ public class PaymentService {
 
         PaymentOrder paymentOrder = paymentOrderRepository.findByRazorpayOrderId(razorpayOrderId)
                 .orElseThrow(() -> new PaymentException("Payment order not found", HttpStatus.NOT_FOUND));
+
+        userRepository.findById(UUID.fromString(userId))
+                .map(u -> { if (u.getAccountStatus() == UserStatus.CLOSED) throw new AuthException("Account is closed." + userId); return u; })
+                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + userId));
 
         if(!paymentOrder.getUserId().equals(userId)){
             throw new PaymentException("Unauthorized: Order does not belong to user", HttpStatus.FORBIDDEN);
