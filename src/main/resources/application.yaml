@@ -34,6 +34,7 @@ spring:
   flyway:
     enabled: true
     baseline-on-migrate: true
+    clean-disabled: true
   security:
     oauth2:
       client:
@@ -42,11 +43,12 @@ spring:
             client-id: ${GOOGLE_CLIENT_ID}
             client-secret: ${GOOGLE_CLIENT_SECRET}
 server:
-  port: 8080
+  port: ${SERVER_PORT}
 
 jwt:
   secret: ${JWT_SECRET}
-  expiration-ms: 3600000
+  expiration-ms: ${JWT_EXPIRATION_ACCESS}          # 5 minutes (Short-lived Access Token)
+  refresh-expiration-ms: ${JWT_EXPIRATION_REFRESH}    # 7 days (Long-lived Refresh Token)
 
 springdoc:
   api-docs:

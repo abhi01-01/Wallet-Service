@@ -75,8 +75,22 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<?>> handleForbidden(AccessDeniedException ex) {
         log.error("Forbidden Access: {}", ex.getMessage());
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                .body(ApiResponse.error("Access denied: you do not have permission to perform this action."));
+                .body(ApiResponse.error(ex.getMessage()));
     }
+
+    @ExceptionHandler(UserNotFoundException.class) 
+    public ResponseEntity<ApiResponse<?>> handleUserNotFound(UserNotFoundException ex) { 
+        log.warn("User Not Found: {}", ex.getMessage()); 
+        return ResponseEntity.status(HttpStatus.NOT_FOUND) 
+                .body(ApiResponse.error(ex.getMessage())); 
+    } 
+
+    @ExceptionHandler(AccountClosureException.class) 
+    public ResponseEntity<ApiResponse<?>> handleAccountClosure(AccountClosureException ex) { 
+        log.warn("Account Closure Conflict: {}", ex.getMessage()); 
+        return ResponseEntity.status(HttpStatus.CONFLICT) 
+                .body(ApiResponse.error(ex.getMessage())); 
+    } 
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<?>> handleValidation(MethodArgumentNotValidException ex) {

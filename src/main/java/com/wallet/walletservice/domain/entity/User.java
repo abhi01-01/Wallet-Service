@@ -2,6 +2,7 @@ package com.wallet.walletservice.domain.entity;
 
 import com.wallet.walletservice.domain.enums.AuthProvider;
 import com.wallet.walletservice.domain.enums.OwnerType;
+import com.wallet.walletservice.domain.enums.UserStatus;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Email;
 import lombok.*;
@@ -46,6 +47,15 @@ public class User {
 
     @Column(name = "updated_at")
     private OffsetDateTime updatedAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "account_status", nullable = false)
+    @Builder.Default
+    private UserStatus accountStatus = UserStatus.ACTIVE;
+
+//    Capture the User account inactive/deletion time
+    @Column(name = "closed_at")
+    private OffsetDateTime closedAt;
 
     @PrePersist
     void onCreate() {

@@ -22,20 +22,26 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter ;
 
-    private static final String[] PUBLIC_PATHS = {
-            "/",
-            "/api/v1/auth/**",
-            "/oauth2/**",
-            "/login/oauth2/**",
-            "/swagger-ui/**",
-            "/swagger-ui.html",
-            "/v3/api-docs/**",
-            "/api-docs/**",
-            "/api-docs.yaml",
-            "/swagger-resources/**",
-            "/configuration/**",
-            "/webjars/**",
-            "/actuator/**"
+    private static final String[] PUBLIC_PATHS = { 
+            "/", 
+            "/api/v1/auth/signup", 
+            "/api/v1/auth/verify-otp", 
+            "/api/v1/auth/login", 
+            "/api/v1/auth/resend-otp", 
+            "/api/v1/auth/google", 
+            "/api/v1/auth/refresh-token", 
+            "/api/v1/auth/oauth2/success", 
+            "/oauth2/**", 
+            "/login/oauth2/**", 
+            "/swagger-ui/**", 
+            "/swagger-ui.html", 
+            "/v3/api-docs/**", 
+            "/api-docs/**", 
+            "/api-docs.yaml", 
+            "/swagger-resources/**", 
+            "/configuration/**", 
+            "/webjars/**", 
+            "/actuator/**" 
     };
 
     @Bean
