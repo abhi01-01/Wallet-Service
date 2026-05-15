@@ -11,7 +11,7 @@ import lombok.Data;
 @Schema(description = "Authentication response containing JWT and user info")
 public class AuthResponse {
 
-    @Schema(description = "JWT access token", example = "eyJhbGciOiJIUzI1...")
+    @Schema(description = "JWT access token, Short-lived", example = "eyJhbGciOiJIUzI1...")
     private String accessToken;
 
     @Builder.Default
@@ -30,4 +30,7 @@ public class AuthResponse {
     /** Only returned for OAuth2 success redirect — not in normal API response */
     @Schema(description = "Optional status message", example = "Login Successful")
     private String message;
+
+    @Schema(description = "Long-lived refresh token for obtaining new access tokens", example = "d9b2d63d-a233-4123...")
+    private String refreshToken;
 }

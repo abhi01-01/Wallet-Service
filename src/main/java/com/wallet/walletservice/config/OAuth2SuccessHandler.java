@@ -3,6 +3,8 @@ package com.wallet.walletservice.config;
 import com.wallet.walletservice.domain.entity.User;
 import com.wallet.walletservice.domain.enums.AuthProvider;
 import com.wallet.walletservice.domain.enums.OwnerType;
+import com.wallet.walletservice.domain.enums.UserStatus;
+import com.wallet.walletservice.exception.AuthException;
 import com.wallet.walletservice.repository.UserRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -72,6 +74,11 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
         // 1. Already linked to this Google account
         var byGoogleId = userRepository.findByGoogleId(googleId);
         if (byGoogleId.isPresent()) {
+            User existing = byGoogleId.get();
+            // NEW: Reject Google login for closed accounts
+            if (existing.getAccountStatus() == UserStatus.CLOSED) {
+                throw new AuthException("Account is closed.");
+            }
             return Objects.requireNonNull(byGoogleId.get(), "Google ID lookup returned null");
         }
 
@@ -79,6 +86,10 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
         var byEmail = userRepository.findByEmail(email);
         if (byEmail.isPresent()) {
             User existing = Objects.requireNonNull(byEmail.get(), "Email lookup returned null");
+            // NEW: Reject Google login for closed accounts
+            if (existing.getAccountStatus() == UserStatus.CLOSED) {
+                throw new AuthException("Account is closed.");
+            }
             existing.setGoogleId(googleId);
             existing.setEmailVerified(true);
             existing.setProvider(AuthProvider.GOOGLE);
