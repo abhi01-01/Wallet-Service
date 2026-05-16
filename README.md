@@ -19,7 +19,7 @@ The app now also includes payment integration. A user does not directly call the
 ## 🧭 How The Application Works
 
 1. A user signs up using email and password, verifies OTP, or logs in through Google.
-2. The service issues a short-lived **Access Token** (5 mins) and a long-lived **Refresh Token** (7 days).
+2. The service issues a short-lived **Access Token** (`5` mins) and a long-lived **Refresh Token** (7 days).
 3. Protected wallet and payment endpoints use Spring Security and JWT authentication.
 4. Each user can own one wallet per asset type, such as `GOLD`, `DIAMOND`, or `LOYALTY`.
 5. Wallet operations are modeled as financial transfers between two wallets:
@@ -35,6 +35,69 @@ The app now also includes payment integration. A user does not directly call the
    - Revokes all active refresh tokens immediately.
 
 This separation keeps payment processing and wallet accounting clean. Razorpay integration answers the question, "Did real money payment succeed?" Wallet Service answers the question, "How should credits move inside our system after that payment succeeds?"
+
+```mermaid
+graph TD
+    subgraph Client [Frontend Layer]
+        UI[React / Mobile UI]
+        RZP_SDK[Razorpay Client SDK]
+    end
+
+    subgraph Infrastructure [API Gateway Layer - Future]
+        RL[Redis Rate Limiter]
+        AuthZ[API Gateway]
+    end
+
+    subgraph Service [Wallet Service Core]
+        Auth[Auth Subsystem]
+        Pay[Payment Subsystem]
+        Wal[Wallet & Ledger Subsystem]
+        
+        subgraph Webhook Inbox
+            Ingest[Ingestion Service]
+            Poller[Async Poller Job]
+            Strat[Strategy Dispatcher]
+        end
+    end
+
+    subgraph Storage [Persistence & Eventing]
+        DB[(PostgreSQL - ACID Ledger)]
+        Cache[(Redis - Session/Idempotency - Future)]
+        MQ[[Kafka - Event Sourcing - Future]]
+    end
+
+    subgraph External [External Gateways]
+        RZP_API[Razorpay Server]
+        Brevo[Brevo SMTP]
+    end
+
+    %% Auth Flow
+    UI --> AuthZ
+    AuthZ --> Auth
+    Auth --> DB
+    Auth --> Brevo
+
+    %% Payment Flow
+    UI -->|1. /create-order| Pay
+    Pay -->|2. Server-to-Server| RZP_API
+    UI -->|3. Pass order_id| RZP_SDK
+    RZP_SDK <-->|4. PCI-DSS Secure Payment| RZP_API
+    RZP_SDK -->|5. Return HMAC Signature| UI
+    UI -->|6. /verify| Pay
+    Pay --> Wal
+
+    %% Webhook Flow
+    RZP_API -->|Async notification| Ingest
+    Ingest --> DB
+    DB -.->|SKIP LOCKED| Poller
+    Poller --> Strat
+    Strat --> Wal
+
+    %% Wallet Flow
+    Wal --> DB
+    Wal -.->|Emit ledger events| MQ
+```
+
 
 ---
 
@@ -52,6 +115,7 @@ erDiagram
     WALLET ||--o{ LEDGER_ENTRY : "records balance changes"
     TRANSACTION ||--o{ LEDGER_ENTRY : "composed of"
     PAYMENT_ORDER ||..o| TRANSACTION : "credits wallet after verification"
+    WEBHOOK_EVENT ||--o| PAYMENT_ORDER : "reconciles"
 
     USER {
         UUID id PK
@@ -65,6 +129,19 @@ erDiagram
         datetime closed_at
         datetime created_at
         datetime updated_at
+    }
+
+    WEBHOOK_EVENT {
+        Long id PK
+        string event_id UK
+        string event_type
+        string order_id FK
+        string status "RECEIVED | PROCESSING | PROCESSED | FAILED"
+        jsonb payload
+        int processing_attempts
+        string failure_reason
+        datetime received_at
+        datetime processed_at
     }
 
     REFRESH_TOKEN {
@@ -179,6 +256,71 @@ This makes payment reconciliation easier because the system can answer whether a
 
 ---
 
+
+
+### 💳🪝 Payment Webhook Architecture
+
+
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant RZP as Razorpay Gateway
+    participant API as WebhookController
+    participant IS as WebhookIngestionService
+    participant DB as PostgreSQL (Inbox)
+    participant Worker as WebhookPollerJob
+    participant Strat as PaymentCapturedStrategy
+    participant Wallet as WalletService
+
+    Note over RZP, API: Phase 1: High-Throughput Ingestion
+    RZP->>API: POST /webhooks/razorpay (Raw Payload + Signature)
+    API->>IS: ingestRazorpayWebhook(rawPayload, signature)
+    
+    rect rgb(30, 30, 30)
+    Note right of IS: Cryptographic Validation
+    IS->>IS: Utils.verifyWebhookSignature(HMAC-SHA256)
+    end
+    
+    IS->>DB: INSERT INTO webhook_events (JSONB, status='RECEIVED')
+    DB-->>IS: Acknowledge Insert (Idempotent UNIQUE constraint)
+    IS-->>API: Webhook Saved Successfully
+    API-->>RZP: 200 OK (Instant Response)
+    
+    Note over DB, Wallet: Phase 2: Asynchronous Idempotent Processing
+    loop Every 500ms
+        Worker->>DB: SELECT ... FOR UPDATE SKIP LOCKED
+        DB-->>Worker: Lock acquired on Row (status='RECEIVED')
+        Worker->>DB: UPDATE status='PROCESSING'
+        
+        Worker->>Strat: dispatch(WebhookEvent)
+        Strat->>DB: SELECT status FROM payment_orders WHERE order_id = ?
+        DB-->>Strat: PaymentOrder details
+        
+        alt is status == 'PAID' (Race Condition Won by Client)
+            Strat->>Strat: Skip Execution (Idempotent)
+        else is status != 'PAID'
+            Strat->>Wallet: topUp(userId, amount, idempotencyKey)
+            Note right of Wallet: Pessimistic Write Lock on Wallets<br/>Insert 1 Transaction<br/>Insert 2 Ledger Entries
+            Wallet-->>Strat: Success
+        end
+        
+        Worker->>DB: UPDATE status='PROCESSED', processed_at=NOW()
+        Note right of Worker: Transaction Commits, Row Lock Released
+    end
+```
+
+### Transactional Inbox for Guaranteed Reconciliation
+
+Relying solely on client-side confirmation creates a critical vulnerability: if a user's browser crashes after payment but before the `/verify` call, funds are deducted without crediting the wallet. To ensure absolute ledger reconciliation, this project implements the **Transactional Inbox Pattern**:
+
+*   **Atomic Ingestion:** Raw JSONB payloads are cryptographically verified (HMAC-SHA256) and immediately persisted as `RECEIVED`. This ensures a near-instant 200 OK response to Razorpay, preventing gateway timeouts.
+*   **Scalable Processing:** A background engine uses PostgreSQL's `SELECT FOR UPDATE SKIP LOCKED` to process events asynchronously and horizontally across service instances.
+*   **Zero-Loss Resilience:** The architecture guarantees zero data loss, handles transient failures via a Dead Letter Queue (DLQ), and ensures idempotent wallet crediting even during severe network partitions or client drop-offs.
+
+
+---
+
 ## 🚀 Quick Start With Docker
 
 ### Prerequisites
@@ -229,19 +371,19 @@ http://localhost:8080/swagger-ui.html
 
 ### Important Environment Variables
 
-| Variable | Purpose |
-|----------|---------|
-| `SPRING_DATASOURCE_USERNAME` | PostgreSQL username for local app connection |
-| `SPRING_DATASOURCE_PASSWORD` | PostgreSQL password for local app connection |
-| `JWT_SECRET` | Secret used to sign JWT access tokens |
-| `BREVO_API_KEY` | API key for Brevo HTTP email delivery |
-| `BREVO_SENDER_EMAIL` | Verified sender email address on Brevo |
-| `MAIL_SENDER_NAME` | Display name for the email sender |
-| `GOOGLE_CLIENT_ID` | Google OAuth client id |
-| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
-| `RAZORPAY_KEY_ID` | Razorpay API key id |
-| `RAZORPAY_KEY_SECRET` | Razorpay API key secret used for signature verification |
-| `AUTHORIZED_SYSTEM_IDS` | Optional allow-list for sensitive system wallet operations |
+| Variable                     | Purpose                                                    |
+|------------------------------|------------------------------------------------------------|
+| `SPRING_DATASOURCE_USERNAME` | PostgreSQL username for local app connection               |
+| `SPRING_DATASOURCE_PASSWORD` | PostgreSQL password for local app connection               |
+| `JWT_SECRET`                 | Secret used to sign JWT access tokens                      |
+| `BREVO_API_KEY`              | API key for Brevo HTTP email delivery                      |
+| `BREVO_SENDER_EMAIL`         | Verified sender email address on Brevo                     |
+| `MAIL_SENDER_NAME`           | Display name for the email sender                          |
+| `GOOGLE_CLIENT_ID`           | Google OAuth client id                                     |
+| `GOOGLE_CLIENT_SECRET`       | Google OAuth client secret                                 |
+| `RAZORPAY_KEY_ID`            | Razorpay API key id                                        |
+| `RAZORPAY_KEY_SECRET`        | Razorpay API key secret used for signature verification    |
+| `AUTHORIZED_SYSTEM_IDS`      | Optional allow-list for sensitive system wallet operations |
 
 * `.env.example` file consist a list of env varibales used in application.
 
@@ -251,35 +393,41 @@ http://localhost:8080/swagger-ui.html
 
 ### Auth API
 
-| Method | Endpoint                      | Access | Description |
-|--------|-------------------------------|--------|-------------|
-| `POST` | `/api/v1/auth/signup`         | Public | Register with email and password |
-| `POST` | `/api/v1/auth/verify-otp`     | Public | Verify OTP and receive tokens |
-| `POST` | `/api/v1/auth/login`          | Public | Login and receive JWT + Refresh Token |
-| `POST` | `/api/v1/auth/resend-otp`     | Public | Send a fresh OTP for email verification |
-| `POST` | `/api/v1/auth/google`         | Public | Login or signup using a Google ID token |
-| `POST` | `/api/v1/auth/refresh-token`  | Public | Exchange Refresh Token for new Access Token |
-| `POST` | `/api/v1/auth/logout`         | User | Revoke a specific refresh token session |
-| `POST` | `/api/v1/auth/oauth2/success` | User | Handles successful Google OAuth2 login and returns the generated JWT. |
-| `DELETE` | `/api/v1/auth/close-account`  | User | Close account, forfeit funds, and scrub data |
+| Method   | Endpoint                      | Access | Description                                                           |
+|----------|-------------------------------|--------|-----------------------------------------------------------------------|
+| `POST`   | `/api/v1/auth/signup`         | Public | Register with email and password                                      |
+| `POST`   | `/api/v1/auth/verify-otp`     | Public | Verify OTP and receive tokens                                         |
+| `POST`   | `/api/v1/auth/login`          | Public | Login and receive JWT + Refresh Token                                 |
+| `POST`   | `/api/v1/auth/resend-otp`     | Public | Send a fresh OTP for email verification                               |
+| `POST`   | `/api/v1/auth/google`         | Public | Login or signup using a Google ID token                               |
+| `POST`   | `/api/v1/auth/refresh-token`  | Public | Exchange Refresh Token for new Access Token                           |
+| `POST`   | `/api/v1/auth/logout`         | User   | Revoke a specific refresh token session                               |
+| `POST`   | `/api/v1/auth/oauth2/success` | User   | Handles successful Google OAuth2 login and returns the generated JWT. |
+| `DELETE` | `/api/v1/auth/close-account`  | User   | Close account, forfeit funds, and scrub data                          |
 
 ### Wallet API
 
-| Method | Endpoint | Access | Description |
-|--------|----------|--------|-------------|
-| `GET` | `/api/v1/wallets/{userId}/balance` | User | Get all balances for authenticated user |
-| `POST` | `/api/v1/wallets/spend` | User | Spend credits from authenticated user wallet |
-| `POST` | `/api/v1/wallets/topUp` | System | Credit a user wallet from treasury |
-| `POST` | `/api/v1/wallets/bonus` | System | Issue promotional credits from treasury |
-| `GET` | `/api/v1/wallets/{userId}/ledger` | User/System | View auditable ledger history |
+| Method | Endpoint                           | Access      | Description                                  |
+|--------|------------------------------------|-------------|----------------------------------------------|
+| `GET`  | `/api/v1/wallets/{userId}/balance` | User        | Get all balances for authenticated user      |
+| `POST` | `/api/v1/wallets/spend`            | User        | Spend credits from authenticated user wallet |
+| `POST` | `/api/v1/wallets/topUp`            | System      | Credit a user wallet from treasury           |
+| `POST` | `/api/v1/wallets/bonus`            | System      | Issue promotional credits from treasury      |
+| `GET`  | `/api/v1/wallets/{userId}/ledger`  | User/System | View auditable ledger history                |
 
 ### Payment API
 
-| Method | Endpoint | Access | Description |
-|--------|----------|--------|-------------|
-| `POST` | `/api/v1/payments/create-order` | User | Create Razorpay order and local payment order |
-| `POST` | `/api/v1/payments/verify` | User | Verify signature and credit wallet |
+| Method | Endpoint                        | Access | Description                                   |
+|--------|---------------------------------|--------|-----------------------------------------------|
+| `POST` | `/api/v1/payments/create-order` | User   | Create Razorpay order and local payment order |
+| `POST` | `/api/v1/payments/verify`       | User   | Verify signature and credit wallet            |
 
+
+### Webhook API
+
+| Method | Endpoint                    | Access         | Description                                         |
+|--------|-----------------------------|----------------|-----------------------------------------------------|
+| `POST` | `/api/v1/webhooks/razorpay` | Public/Gateway | Ingest and cryptographically verify Razorpay events |
 ---
 
 ## 🛡 Key Financial Features
@@ -295,7 +443,7 @@ This gives the system an auditable trail and makes it possible to reconstruct wa
 
 ### Idempotency
 
-Financial APIs use idempotency keys so duplicate requests do not double-credit or double-spend funds.
+Financial APIs use idempotency keys, so duplicate requests do not double-credit or double-spend funds.
 
 For direct wallet top-ups, bonuses, and spends, the client or system provides an `idempotencyKey`. For Razorpay wallet credits, the service generates the wallet top-up idempotency key from the Razorpay payment id:
 
@@ -306,7 +454,7 @@ rzp_{razorpayPaymentId}
 This means repeated verification calls for the same paid Razorpay payment do not create multiple wallet credits.
 
 ### Dual-Token System
-- **Access Tokens**: Short-lived (5m) JWTs used for API authorization.
+- **Access Tokens**: Short-lived (5 m) JWTs used for API authorization.
 - **Refresh Tokens**: Long-lived (7d) database-backed tokens. This allows the system to revoke specific device sessions instantly (logout) without waiting for a JWT to expire.
 
 ### Lazy Wallet Initialization
@@ -377,7 +525,7 @@ To avoid that, the service sorts wallet ids in ascending order before acquiring 
 
 ### Validate Under Lock
 
-Spend balance checks happen after wallet rows are locked. This is critical because checking balance before locking can produce stale reads. The system only decides whether a user has enough balance once it owns the write lock for that wallet row.
+Spend balance checks happen after wallet rows are locked. This is critical because checking balance before locking can produce stale reads. The system only decides whether a user has enough balances once it owns the write lock for that wallet row.
 
 ### Optimistic Version Field
 
@@ -413,7 +561,7 @@ For example, a payment verification request might be retried because of a client
 ## 🔮 Future Roadmap
 
 - [ ] Add a Flyway migration dedicated to the `payment_orders` table if not already applied in the target environment.
-- [ ] Add Razorpay webhook handling for asynchronous reconciliation of paid, failed, and captured payment events.
+- [x] Add Razorpay webhook handling for asynchronous reconciliation of paid, failed, and captured payment events.
 - [ ] Add payment order expiry and stale order cleanup.
 - [ ] Add a payment order status endpoint so clients can poll order state safely.
 - [ ] Add refund support and reverse-ledger entries for failed fulfillment or customer refunds.
@@ -421,6 +569,6 @@ For example, a payment verification request might be retried because of a client
 - [ ] Add integration tests for payment verification, duplicate verification, invalid signatures, and wallet credit idempotency.
 - [ ] Add admin APIs for payment investigation and manual reconciliation.
 - [ ] Add rate limiting for auth, payment creation, and verification endpoints.
-- [ ] Add webhook signature verification and replay protection.
+- [x] Add webhook signature verification and replay protection.
 - [ ] Add multi-currency payment support and configurable asset purchase rules.
 - [ ] Add observability dashboards for payment success rate, ledger failures, lock wait time, and retry patterns.

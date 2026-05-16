@@ -117,6 +117,14 @@ public class PaymentService {
             return; // Idempotent
         }
 
+        // 1.5 Check if this payment ID has already been used (prevent duplicate payment logic)
+        String finalRazorpayPaymentId = razorpayPaymentId;
+        paymentOrderRepository.findByRazorpayPaymentId(razorpayPaymentId)
+                .ifPresent(existingOrder -> {
+                    log.info("Payment ID {} already associated with order {}. Skipping.", finalRazorpayPaymentId, existingOrder.getRazorpayOrderId());
+                    throw new PaymentException("Payment ID already processed", HttpStatus.CONFLICT);
+                });
+
         // 2. Verify Razorpay Signature
 
         try {
