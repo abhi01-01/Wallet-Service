@@ -53,6 +53,7 @@ public class WalletService {
     public TransactionResponse topUp(TopUpRequest req) {
         log.info("TopUp request: user={}, asset={}, amount={}, key={}",
                 req.getUserId(), req.getAssetCode(), req.getAmount(), req.getIdempotencyKey());
+
         Transaction txn = processTransfer(
                 req.getIdempotencyKey(),
                 req.getAssetCode(),
@@ -63,10 +64,9 @@ public class WalletService {
                 req.getDescription(),
                 () -> String.format("Top-up: %s %s for user %s", req.getAmount(), req.getAssetCode(), req.getUserId()),
                 null,
-                () -> log.info("Duplicate topUp request detected for key={}, returning cached response", req.getIdempotencyKey())
+                "TopUp"
         );
 
-        log.info("TopUp success: txn={}, user={}, +{} {}", txn.getId(), req.getUserId(), req.getAmount(), req.getAssetCode());
         return buildTransactionResponse(txn);
     }
 
@@ -79,6 +79,7 @@ public class WalletService {
     public TransactionResponse issueBonus(BonusRequest req) {
         log.info("Bonus request: user={}, asset={}, amount={}, key={}",
                 req.getUserId(), req.getAssetCode(), req.getAmount(), req.getIdempotencyKey());
+
         Transaction txn = processTransfer(
                 req.getIdempotencyKey(),
                 req.getAssetCode(),
@@ -89,10 +90,9 @@ public class WalletService {
                 req.getDescription(),
                 () -> String.format("Bonus issued: %s %s to user %s", req.getAmount(), req.getAssetCode(), req.getUserId()),
                 null,
-                null
+                "Bonus"
         );
 
-        log.info("Bonus success: txn={}, user={}, +{} {}", txn.getId(), req.getUserId(), req.getAmount(), req.getAssetCode());
         return buildTransactionResponse(txn);
     }
 
@@ -104,6 +104,7 @@ public class WalletService {
     public TransactionResponse spend(SpendRequest req) {
         log.info("Spend request: user={}, asset={}, amount={}, key={}",
                 req.getUserId(), req.getAssetCode(), req.getAmount(), req.getIdempotencyKey());
+
         Transaction txn = processTransfer(
                 req.getIdempotencyKey(),
                 req.getAssetCode(),
@@ -114,10 +115,9 @@ public class WalletService {
                 req.getDescription(),
                 () -> String.format("Spend: %s %s by user %s", req.getAmount(), req.getAssetCode(), req.getUserId()),
                 debitWallet -> ensureSufficientBalance(debitWallet, req),
-                null
+                "Spend"
         );
 
-        log.info("Spend success: txn={}, user={}, -{} {}", txn.getId(), req.getUserId(), req.getAmount(), req.getAssetCode());
         return buildTransactionResponse(txn);
     }
 
@@ -205,7 +205,7 @@ public class WalletService {
                             "Account Closure Balance Forfeiture",
                             () -> String.format("Forfeiture of %s %s due to account closure", wallet.getBalance(), wallet.getAssetType().getCode()),
                             null,
-                            null
+                            "Forfeit"
                     );
                     log.info("Forfeited {} {} from user {} to SYSTEM_TREASURY", wallet.getBalance(), wallet.getAssetType().getCode(), userId);
                 }
@@ -270,12 +270,10 @@ public class WalletService {
                                         String providedDescription,
                                         Supplier<String> defaultDescriptionSupplier,
                                         Consumer<Wallet> preDebitValidator,
-                                        Runnable duplicateRequestLogger) {
+                                        String contextLabel) {
         Optional<Transaction> existing = transactionRepository.findByIdempotencyKey(idempotencyKey);
         if (existing.isPresent()) {
-            if (duplicateRequestLogger != null) {
-                duplicateRequestLogger.run();
-            }
+            log.info("Duplicate {} request detected for key={}, returning cached response", contextLabel, idempotencyKey);
             return existing.get();
         }
 
@@ -295,7 +293,13 @@ public class WalletService {
         walletRepository.saveAll(List.of(debitWallet, creditWallet));
 
         String description = providedDescription != null ? providedDescription : defaultDescriptionSupplier.get();
-        return saveTransaction(idempotencyKey, transactionType, description, debitWallet, creditWallet, amount);
+        Transaction txn = saveTransaction(idempotencyKey, transactionType, description, debitWallet, creditWallet, amount);
+
+        String sign = (transactionType == TransactionType.SPEND) ? "-" : "+";
+        String user = (transactionType == TransactionType.SPEND) ? debitOwnerId : creditOwnerId;
+        log.info("{} success: txn={}, user={}, {}{} {}", contextLabel, txn.getId(), user, sign, amount, assetCode);
+
+        return txn;
     }
 
     private void ensureSufficientBalance(Wallet debitWallet, SpendRequest req) {

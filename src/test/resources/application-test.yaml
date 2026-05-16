@@ -46,6 +46,8 @@ razorpay:
   key:
     id: rzp_test_dummy
     secret: dummy_razorpay_secret
+  webhook:
+    secret: dummy_webhook_secret
 
 wallet:
   security:
