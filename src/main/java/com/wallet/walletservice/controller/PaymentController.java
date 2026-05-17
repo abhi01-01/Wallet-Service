@@ -2,6 +2,7 @@ package com.wallet.walletservice.controller;
 
 import com.wallet.walletservice.dto.request.PaymentOrderRequest;
 import com.wallet.walletservice.dto.request.PaymentVerifyRequest;
+import com.wallet.walletservice.dto.response.ApiResponse;
 import com.wallet.walletservice.dto.response.PaymentOrderResponse;
 import com.wallet.walletservice.service.PaymentService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -12,10 +13,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/v1/payments")
@@ -59,6 +57,18 @@ public class PaymentController {
         );
 
         return ResponseEntity.ok(com.wallet.walletservice.dto.response.ApiResponse.ok("Payment verified and wallet credited successfully", null));
+    }
+
+
+    @GetMapping("/order-status/{orderId}")
+    @PreAuthorize("hasRole('USER')")
+    @Operation(summary = "Get Payment Order Status", description = "Poll this endpoint to verify if the payment was successful.")
+    public ResponseEntity<com.wallet.walletservice.dto.response.ApiResponse<PaymentOrderResponse>> getOrderStatus(
+            @AuthenticationPrincipal String useId,
+            @PathVariable String orderId
+    ){
+        PaymentOrderResponse response = paymentService.getOrderStatus(useId, orderId);
+        return ResponseEntity.ok(com.wallet.walletservice.dto.response.ApiResponse.ok("Order status retrieved", response));
     }
 
 }

@@ -5,7 +5,6 @@ import com.razorpay.RazorpayClient;
 import com.razorpay.RazorpayException;
 import com.razorpay.Utils;
 import com.wallet.walletservice.domain.entity.PaymentOrder;
-import com.wallet.walletservice.domain.entity.User;
 import com.wallet.walletservice.domain.enums.PaymentOrderStatus;
 import com.wallet.walletservice.domain.enums.UserStatus;
 import com.wallet.walletservice.dto.request.PaymentOrderRequest;
@@ -15,15 +14,16 @@ import com.wallet.walletservice.exception.AuthException;
 import com.wallet.walletservice.exception.PaymentException;
 import com.wallet.walletservice.repository.PaymentOrderRepository;
 import com.wallet.walletservice.repository.UserRepository;
-import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Service
@@ -165,6 +165,31 @@ public class PaymentService {
 
         // Call internal service
         walletService.topUp(topUpRequest);
+    }
+
+    // 3. Status Polling
+    @Transactional(readOnly = true)
+    public PaymentOrderResponse getOrderStatus(String userId, String razorpayOrderId){
+
+        PaymentOrder order = paymentOrderRepository.findByRazorpayOrderIdAndUserId(razorpayOrderId, userId)
+                .orElseThrow(() -> new PaymentException("Order not found or unauthorized", HttpStatus.NOT_FOUND));
+
+        return PaymentOrderResponse.builder()
+                .razorpayOrderId(order.getRazorpayOrderId())
+                .amount(order.getAmount())
+                .currency("INR")
+                .status(order.getStatus().name())
+                .build() ;
+    }
+
+    // 4. Sweeping
+
+    public void cleanUpStaleOrders(){
+        // Cutoff is 2 hours ago
+        OffsetDateTime currentTime = OffsetDateTime.now();
+        OffsetDateTime cutOff = OffsetDateTime.now().minusHours(2) ;
+        int updatedCount = paymentOrderRepository.failStaleOrders(cutOff, currentTime);
+        log.info("Swept and failed {} stale payment orders.", updatedCount);
     }
 
     private String normalize(String value) {
