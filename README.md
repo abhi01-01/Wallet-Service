@@ -50,7 +50,12 @@ graph TD
 
     subgraph Service [Wallet Service Core]
         Auth[Auth Subsystem]
-        Pay[Payment Subsystem]
+        
+        subgraph Payment Subsystem
+            Pay[Payment API]
+            Sweeper[Stale Order Sweeper Job]
+        end
+        
         Wal[Wallet & Ledger Subsystem]
         
         subgraph Webhook Inbox
@@ -96,6 +101,9 @@ graph TD
     %% Wallet Flow
     Wal --> DB
     Wal -.->|Emit ledger events| MQ
+
+    %% Cleanup Flow
+    Sweeper --> DB
 ```
 
 
@@ -253,6 +261,15 @@ The status moves through:
 - `FAILED`: Signature verification failed.
 
 This makes payment reconciliation easier because the system can answer whether a Razorpay order was created, whether it was verified, and whether the wallet was credited.
+
+### 🧹 Stale Payment Order Sweeper (Cron Job)
+
+To prevent abandoned checkouts or orphaned payment intents from lingering indefinitely, the service runs a background scheduled job every 15 minutes (`@Scheduled(cron = "0 0/15 * * * *")`). 
+
+This job executes a bulk database update to find any `PaymentOrder` stuck in the `CREATED` state past a designated cutoff time and automatically transitions its status to `FAILED`. This ensures:
+- The database remains clean of stale pending records.
+- Financial reporting accurately reflects failed or abandoned conversion attempts.
+- Late-arriving webhooks or client verifications are cleanly rejected if they exceed the payment time-to-live (TTL).
 
 ---
 
@@ -421,6 +438,7 @@ http://localhost:8080/swagger-ui.html
 |--------|---------------------------------|--------|-----------------------------------------------|
 | `POST` | `/api/v1/payments/create-order` | User   | Create Razorpay order and local payment order |
 | `POST` | `/api/v1/payments/verify`       | User   | Verify signature and credit wallet            |
+| `GET`  | `/api/v1/payments/order-status/{orderId}` | User   | Poll order status for safe client-side verification |
 
 
 ### Webhook API
@@ -562,8 +580,8 @@ For example, a payment verification request might be retried because of a client
 
 - [ ] Add a Flyway migration dedicated to the `payment_orders` table if not already applied in the target environment.
 - [x] Add Razorpay webhook handling for asynchronous reconciliation of paid, failed, and captured payment events.
-- [ ] Add payment order expiry and stale order cleanup.
-- [ ] Add a payment order status endpoint so clients can poll order state safely.
+- [x] Add payment order expiry and stale order cleanup.
+- [x] Add a payment order status endpoint so clients can poll order state safely.
 - [ ] Add refund support and reverse-ledger entries for failed fulfillment or customer refunds.
 - [ ] Add stronger reconciliation reports between Razorpay payments, `payment_orders`, wallet `transactions`, and `ledger_entries`.
 - [ ] Add integration tests for payment verification, duplicate verification, invalid signatures, and wallet credit idempotency.
