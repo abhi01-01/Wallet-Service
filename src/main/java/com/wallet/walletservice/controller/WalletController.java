@@ -7,7 +7,7 @@ import com.wallet.walletservice.dto.response.BalanceResponse;
 import com.wallet.walletservice.dto.response.LedgerHistoryResponse;
 import com.wallet.walletservice.dto.response.TransactionResponse;
 import com.wallet.walletservice.exception.AuthException;
-import com.wallet.walletservice.service.WalletService;
+import com.wallet.walletservice.service.wallet.WalletService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;

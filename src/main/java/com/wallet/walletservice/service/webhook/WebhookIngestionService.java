@@ -44,7 +44,7 @@ public class WebhookIngestionService {
             JsonNode payloadNode = objectMapper.readTree(rawPayload);
             
             // Razorpay top-level fields
-            String eventId = payloadNode.path("id").asText(); 
+            String eventId = payloadNode.path("payload").path("payment").path("entity").path("id").asText();
             String eventType = payloadNode.path("event").asText();
             
             // Extract Order ID to link with PaymentOrder
@@ -52,7 +52,7 @@ public class WebhookIngestionService {
 
             // 3. Save to Transactional Inbox (Idempotent by DB Unique Constraint)
             if (eventRepository.findByEventId(eventId).isPresent()) {
-                log.info("Duplicate webhook event received: {}. Skipping ingestion.", eventId);
+                log.info("Duplicate webhook event received: {} Skipping ingestion.", eventId);
                 return;
             }
 

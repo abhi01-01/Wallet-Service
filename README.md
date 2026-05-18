@@ -1,6 +1,6 @@
 # 💰 Wallet Service
 
-A high-performance, financially rigorous digital wallet service built with Spring Boot 4. The service manages user wallets, supports multiple asset types, records every balance movement through a double-entry ledger, integrated with Razorpay so authenticated users can purchase wallet credits through real payment orders, and provides a secure session management system using JWT and Refresh Tokens.
+A high-performance, financially rigorous digital wallet service built with Spring Boot 4.0.6. The service manages user wallets, supports multiple asset types, records every balance movement through a double-entry ledger, integrated with Razorpay so authenticated users can purchase wallet credits through real payment orders, and provides a secure session management system using JWT and Refresh Tokens.
 
 * [Initial Requirement](https://drive.google.com/file/d/1PTFW5_xbD04Lx3RW_QgvM-MmMYp23y78/view?usp=sharing)
 ---
@@ -18,23 +18,21 @@ The app now also includes payment integration. A user does not directly call the
 
 ## 🧭 How The Application Works
 
-1. A user signs up using email and password, verifies OTP, or logs in through Google.
-2. The service issues a short-lived **Access Token** (`5` mins) and a long-lived **Refresh Token** (7 days).
-3. Protected wallet and payment endpoints use Spring Security and JWT authentication.
-4. Each user can own one wallet per asset type, such as `GOLD`, `DIAMOND`, or `LOYALTY`.
-5. Wallet operations are modeled as financial transfers between two wallets:
-   - Top-up: `SYSTEM_TREASURY` debits, user wallet credits.
-   - Bonus: `SYSTEM_TREASURY` debits, user wallet credits.
-   - Spend: user wallet debits, `SYSTEM_TREASURY` credits.
-6. Every successful transfer creates one transactions row and exactly two ledger_entries rows.
-7. Payment purchases use a payment_orders table to track the external Razorpay order lifecycle before wallet credit happens.
-8. Account Closure Flow:
-   - Verifies that all wallets are empty or explicitly confirmed for forfeiture.
-   - Forfeits remaining balances to the treasury.
-   - Scrubs PII (email/password) and marks the account as `CLOSED`.
-   - Revokes all active refresh tokens immediately.
+1. **User Authentication**: A user signs up using email and password, verifies via OTP (sent through Brevo), or logs in through Google OAuth2. The `AuthService` facade delegates to focused services — `EmailAuthService`, `GoogleAuthService`, `AuthSessionService`, and `AccountClosureService` — so each concern stays small and independently testable.
+2. **Token Management**: `AuthSessionService` issues a short-lived **Access Token** (5 mins) and a long-lived **Refresh Token** (7 days) for secure session persistence and targeted device revocation.
+3. **Security**: Protected wallet and payment endpoints use Spring Security and JWT authentication.
+4. **Multi-Asset Support**: Each user can own one wallet per asset type, such as `GOLD`, `DIAMOND`, or `LOYALTY`.
+5. **Strategy-Driven Wallet Operations**: Every wallet movement (`TOPUP`, `BONUS`, `SPEND`, `FORFEIT`) is implemented as a `WalletOperation` bean. The `WalletOperationRegistry` resolves the bean by `TransactionType`, builds a `TransferCommand`, and hands it to a shared `WalletTransferService`. Adding a new transfer type is one new bean — no facade changes.
+6. **Double-Entry Ledger**: All operations resolve to a transfer between two wallets:
+   - **Top-up / Bonus**: `SYSTEM_TREASURY` debits, user wallet credits.
+   - **Spend / Forfeit**: User wallet debits, `SYSTEM_TREASURY` credits.
+7. **Pluggable Policies**: Per-operation rules (e.g. `SufficientBalancePolicy` for `SPEND`) are injected as a list of `WalletTransferPolicy` checks executed *after* pessimistic locks are held — so balance validation never reads stale data.
+8. **Auditable Transactions**: Every successful transfer creates one `transactions` row and exactly two `ledger_entries` rows (source of truth).
+9. **Payment Integration**: The `payment` package is split into `order` (create), `verification` (verify + credit), `gateway` (Razorpay SDK abstraction), and `cleanup` (sweeper). The `PaymentGateway` interface lets the Razorpay implementation be swapped without touching business code.
+10. **Webhook Reconciliation**: Razorpay events land in a transactional inbox via `WebhookIngestionService`, are picked up by `WebhookPollerJob`, and dispatched through `WebhookDispatcher` to the matching `WebhookHandlerStrategy` (currently `PaymentCapturedStrategy`).
+11. **Account Lifecycle & GDPR**: `AccountClosureService` orchestrates closure — it triggers `FORFEIT` operations through the same transfer engine for any non-zero balances (with explicit consent), scrubs PII, marks the account `CLOSED`, and revokes all refresh tokens.
 
-This separation keeps payment processing and wallet accounting clean. Razorpay integration answers the question, "Did real money payment succeed?" Wallet Service answers the question, "How should credits move inside our system after that payment succeeds?"
+This separation keeps each concern small and replaceable. Razorpay integration answers, "Did real money payment succeed?" The wallet engine answers, "How should credits move inside our system after that?"
 
 ```mermaid
 graph TD
@@ -49,19 +47,37 @@ graph TD
     end
 
     subgraph Service [Wallet Service Core]
-        Auth[Auth Subsystem]
-        
-        subgraph Payment Subsystem
-            Pay[Payment API]
-            Sweeper[Stale Order Sweeper Job]
+        subgraph AuthSub [Auth Subsystem]
+            EmailAuth[EmailAuthService]
+            GoogleAuth[GoogleAuthService]
+            Session[AuthSessionService]
+            Closure[AccountClosureService]
         end
-        
-        Wal[Wallet & Ledger Subsystem]
-        
-        subgraph Webhook Inbox
-            Ingest[Ingestion Service]
-            Poller[Async Poller Job]
-            Strat[Strategy Dispatcher]
+
+        subgraph PaySub [Payment Subsystem]
+            OrderSvc[PaymentOrderService]
+            Verify[PaymentVerificationService]
+            PayGw[PaymentGateway - Razorpay]
+            Sweeper[PaymentSweeperJob]
+        end
+
+        subgraph WalSub [Wallet & Ledger Subsystem]
+            Registry[WalletOperationRegistry]
+            Ops[WalletOperation beans: TopUp / Bonus / Spend / Forfeit]
+            Transfer[WalletTransferService]
+            Policies[WalletTransferPolicy chain]
+        end
+
+        subgraph WhSub [Webhook Inbox Subsystem]
+            Ingest[WebhookIngestionService]
+            Poller[WebhookPollerJob]
+            Disp[WebhookDispatcher]
+            Strat[PaymentCapturedStrategy]
+        end
+
+        subgraph NotifSub [Notification Subsystem]
+            EmailSvc[EmailNotificationService]
+            EmailGw[EmailGateway - Brevo]
         end
     end
 
@@ -73,37 +89,52 @@ graph TD
 
     subgraph External [External Gateways]
         RZP_API[Razorpay Server]
-        Brevo[Brevo SMTP]
+        Brevo[Brevo HTTP API]
     end
 
     %% Auth Flow
     UI --> AuthZ
-    AuthZ --> Auth
-    Auth --> DB
-    Auth --> Brevo
+    AuthZ --> EmailAuth
+    AuthZ --> GoogleAuth
+    AuthZ --> Session
+    AuthZ --> Closure
+    EmailAuth --> EmailSvc
+    EmailSvc --> EmailGw
+    EmailGw --> Brevo
+    EmailAuth --> DB
+    GoogleAuth --> DB
+    Session --> DB
+    Closure --> Registry
 
     %% Payment Flow
-    UI -->|1. /create-order| Pay
-    Pay -->|2. Server-to-Server| RZP_API
+    UI -->|1. /create-order| OrderSvc
+    OrderSvc -->|2. Server-to-Server| PayGw
+    PayGw --> RZP_API
     UI -->|3. Pass order_id| RZP_SDK
     RZP_SDK <-->|4. PCI-DSS Secure Payment| RZP_API
-    RZP_SDK -->|5. Return HMAC Signature| UI
-    UI -->|6. /verify| Pay
-    Pay --> Wal
+    RZP_SDK -->|5. HMAC Signature| UI
+    UI -->|6. /verify| Verify
+    Verify --> Registry
 
     %% Webhook Flow
     RZP_API -->|Async notification| Ingest
     Ingest --> DB
     DB -.->|SKIP LOCKED| Poller
-    Poller --> Strat
-    Strat --> Wal
+    Poller --> Disp
+    Disp --> Strat
+    Strat --> Registry
 
-    %% Wallet Flow
-    Wal --> DB
-    Wal -.->|Emit ledger events| MQ
+    %% Wallet Engine
+    Registry --> Ops
+    Ops --> Transfer
+    Transfer --> Policies
+    Transfer --> DB
+    Transfer -.->|Future: emit ledger events| MQ
 
     %% Cleanup Flow
     Sweeper --> DB
+    OrderSvc --> DB
+    Verify --> DB
 ```
 
 
@@ -224,30 +255,75 @@ erDiagram
 
 ## 💳 Payment Integration Flow
 
-Payment integration is built around Razorpay orders and server-side signature verification.
+Payment integration is built around Razorpay orders and server-side signature verification. The `payment` package is split by responsibility so each step has a single owner:
+
+| Component                     | Role                                                                    |
+|-------------------------------|-------------------------------------------------------------------------|
+| `PaymentController`           | HTTP boundary for `/create-order`, `/verify`, `/order-status`           |
+| `PaymentService`              | Thin transactional facade that fans out to the focused services below   |
+| `PaymentOrderService`         | Creates Razorpay order + persists local `PaymentOrder` (`CREATED`)      |
+| `PaymentGateway` (interface)  | Abstracts the external gateway — `RazorpayPaymentGateway` is the impl   |
+| `PaymentVerificationService`  | Orchestrates verify: authz, signature, status transition, wallet credit |
+| `PaymentSignatureVerifier`    | HMAC-SHA256 signature verification (server-side only)                   |
+| `PaymentUserGuard`            | Refuses credit for `CLOSED` accounts                                    |
+| `WalletCreditService`         | Builds `TopUpRequest` with key `rzp_{paymentId}` and calls `WalletService.topUp` |
+| `PaymentCleanupService` + `PaymentSweeperJob` | Bulk-fail orders stuck in `CREATED` past TTL              |
 
 ```mermaid
 sequenceDiagram
+    autonumber
     participant User
     participant Client
-    participant WalletService
-    participant Razorpay
-    participant Database
+    participant Ctrl as PaymentController
+    participant Facade as PaymentService
+    participant OrderSvc as PaymentOrderService
+    participant Gw as PaymentGateway<br/>(Razorpay)
+    participant Verify as PaymentVerificationService
+    participant SigVer as PaymentSignatureVerifier
+    participant Guard as PaymentUserGuard
+    participant Credit as WalletCreditService
+    participant Wallet as WalletService<br/>(Transfer Engine)
+    participant DB as PostgreSQL
+    participant RZP as Razorpay Server
 
-    User->>Client: Select asset and amount
-    Client->>WalletService: POST /api/v1/payments/create-order
-    WalletService->>Razorpay: Create Razorpay order
-    Razorpay-->>WalletService: razorpay_order_id
-    WalletService->>Database: Save PAYMENT_ORDER as CREATED
-    WalletService-->>Client: Return order id, amount, currency, status
-    Client->>Razorpay: Complete checkout
-    Razorpay-->>Client: payment id + signature
-    Client->>WalletService: POST /api/v1/payments/verify
-    WalletService->>WalletService: Verify Razorpay signature
-    WalletService->>Database: Mark PAYMENT_ORDER as PAID
-    WalletService->>WalletService: Internal wallet top-up with idempotency key rzp_{paymentId}
-    WalletService->>Database: Save transaction + debit/credit ledger entries
-    WalletService-->>Client: Payment verified and wallet credited
+    Note over User, RZP: Phase 1 — Order Creation
+    User->>Client: Select asset + amount
+    Client->>Ctrl: POST /api/v1/payments/create-order
+    Ctrl->>Facade: createOrder(userId, req)
+    Facade->>OrderSvc: createOrder(...)
+    OrderSvc->>Gw: createOrder(amount, currency)
+    Gw->>RZP: REST: orders.create
+    RZP-->>Gw: razorpay_order_id
+    OrderSvc->>DB: INSERT payment_orders (status=CREATED)
+    OrderSvc-->>Client: { orderId, amount, currency, status=CREATED }
+
+    Note over Client, RZP: Phase 2 — Client-side Checkout
+    Client->>RZP: Open Razorpay Checkout
+    RZP-->>Client: payment_id + razorpay_signature
+
+    Note over Client, Wallet: Phase 3 — Verification + Wallet Credit
+    Client->>Ctrl: POST /api/v1/payments/verify
+    Ctrl->>Facade: verifyPayment(...)
+    Facade->>Verify: verifyPayment(...)
+    Verify->>DB: SELECT PaymentOrder by razorpay_order_id
+    Verify->>Guard: ensureUserCanReceivePaymentCredit(userId)
+
+    alt Order already PAID
+        Verify-->>Ctrl: 200 OK (idempotent no-op)
+    else New verification
+        Verify->>SigVer: isValid(orderId, paymentId, signature)
+        alt Signature invalid
+            Verify->>DB: UPDATE status=FAILED
+            Verify-->>Ctrl: 400 — Invalid signature
+        else Signature valid
+            Verify->>DB: UPDATE status=PAID, razorpay_payment_id
+            Verify->>Credit: creditVerifiedPayment(order, paymentId)
+            Credit->>Wallet: topUp(req, key="rzp_{paymentId}")
+            Note right of Wallet: WalletOperationRegistry → TopUpWalletOperation<br/>→ WalletTransferService<br/>(pessimistic lock, 1 txn, 2 ledger entries)
+            Wallet-->>Credit: TransactionResponse
+            Verify-->>Ctrl: 200 OK
+        end
+    end
 ```
 
 ### Why Payment Orders Exist
@@ -258,15 +334,19 @@ The status moves through:
 
 - `CREATED`: Razorpay order was created and stored locally.
 - `PAID`: Razorpay signature was verified and wallet credit was triggered.
-- `FAILED`: Signature verification failed.
+- `FAILED`: Signature verification failed or sweeper expired the order.
 
 This makes payment reconciliation easier because the system can answer whether a Razorpay order was created, whether it was verified, and whether the wallet was credited.
 
+### Why Verification Is Split into Small Collaborators
+
+`PaymentVerificationService` is intentionally a thin orchestrator that delegates to single-purpose collaborators (`PaymentSignatureVerifier`, `PaymentUserGuard`, `WalletCreditService`). Each collaborator can be unit-tested in isolation, and swapping the gateway later (Stripe, PayU, etc.) is a matter of providing alternative `PaymentGateway` / `PaymentSignatureVerifier` beans — no changes to controllers or the wallet engine.
+
 ### 🧹 Stale Payment Order Sweeper (Cron Job)
 
-To prevent abandoned checkouts or orphaned payment intents from lingering indefinitely, the service runs a background scheduled job every 15 minutes (`@Scheduled(cron = "0 0/15 * * * *")`). 
+To prevent abandoned checkouts or orphaned payment intents from lingering indefinitely, `PaymentSweeperJob` runs every 15 minutes (`@Scheduled(cron = "0 0/15 * * * *")`).
 
-This job executes a bulk database update to find any `PaymentOrder` stuck in the `CREATED` state past a designated cutoff time and automatically transitions its status to `FAILED`. This ensures:
+It delegates to `PaymentCleanupService`, which executes a bulk database update to find any `PaymentOrder` stuck in the `CREATED` state past a 2-hour cutoff time and automatically transitions its status to `FAILED`. This ensures:
 - The database remains clean of stale pending records.
 - Financial reporting accurately reflects failed or abandoned conversion attempts.
 - Late-arriving webhooks or client verifications are cleanly rejected if they exceed the payment time-to-live (TTL).
@@ -277,7 +357,16 @@ This job executes a bulk database update to find any `PaymentOrder` stuck in the
 
 ### 💳🪝 Payment Webhook Architecture
 
+To ensure reliability even if the server restarts or Razorpay experiences issues, the service uses a **Transactional Inbox + Strategy Dispatcher** pattern. The pipeline is composed of four focused classes in `service/webhook/`:
 
+| Class                       | Role                                                                            |
+|-----------------------------|---------------------------------------------------------------------------------|
+| `WebhookController`         | HTTP boundary, receives raw payload + signature header                          |
+| `WebhookIngestionService`   | Verifies HMAC, deduplicates by `event_id`, persists `webhook_events` row        |
+| `WebhookPollerJob`          | `@Scheduled(fixedDelay=500ms)` worker that claims rows via `FOR UPDATE SKIP LOCKED` |
+| `WebhookDispatcher`         | Looks up the first `WebhookHandlerStrategy` whose `supports(eventType)` returns true |
+| `WebhookHandlerStrategy`    | Interface — new event types are new beans, no dispatcher changes                |
+| `PaymentCapturedStrategy`   | Concrete strategy for `payment.captured` events                                 |
 
 ```mermaid
 sequenceDiagram
@@ -287,43 +376,60 @@ sequenceDiagram
     participant IS as WebhookIngestionService
     participant DB as PostgreSQL (Inbox)
     participant Worker as WebhookPollerJob
+    participant Disp as WebhookDispatcher
     participant Strat as PaymentCapturedStrategy
-    participant Wallet as WalletService
+    participant Wallet as WalletService<br/>(Transfer Engine)
 
-    Note over RZP, API: Phase 1: High-Throughput Ingestion
-    RZP->>API: POST /webhooks/razorpay (Raw Payload + Signature)
+    Note over RZP, API: Phase 1 — High-Throughput Ingestion
+    RZP->>API: POST /api/v1/webhooks/razorpay (Raw Payload + X-Razorpay-Signature)
     API->>IS: ingestRazorpayWebhook(rawPayload, signature)
-    
+
     rect rgb(30, 30, 30)
     Note right of IS: Cryptographic Validation
     IS->>IS: Utils.verifyWebhookSignature(HMAC-SHA256)
     end
-    
-    IS->>DB: INSERT INTO webhook_events (JSONB, status='RECEIVED')
-    DB-->>IS: Acknowledge Insert (Idempotent UNIQUE constraint)
-    IS-->>API: Webhook Saved Successfully
-    API-->>RZP: 200 OK (Instant Response)
-    
-    Note over DB, Wallet: Phase 2: Asynchronous Idempotent Processing
-    loop Every 500ms
-        Worker->>DB: SELECT ... FOR UPDATE SKIP LOCKED
-        DB-->>Worker: Lock acquired on Row (status='RECEIVED')
-        Worker->>DB: UPDATE status='PROCESSING'
-        
-        Worker->>Strat: dispatch(WebhookEvent)
-        Strat->>DB: SELECT status FROM payment_orders WHERE order_id = ?
-        DB-->>Strat: PaymentOrder details
-        
-        alt is status == 'PAID' (Race Condition Won by Client)
-            Strat->>Strat: Skip Execution (Idempotent)
-        else is status != 'PAID'
-            Strat->>Wallet: topUp(userId, amount, idempotencyKey)
-            Note right of Wallet: Pessimistic Write Lock on Wallets<br/>Insert 1 Transaction<br/>Insert 2 Ledger Entries
-            Wallet-->>Strat: Success
+
+    IS->>DB: SELECT by event_id (dedupe check)
+    alt Duplicate event_id
+        IS-->>API: Skip (already ingested)
+    else New event
+        IS->>DB: INSERT webhook_events (JSONB, status='RECEIVED')
+    end
+    IS-->>API: Ingestion complete
+    API-->>RZP: 200 OK (instant response)
+
+    Note over DB, Wallet: Phase 2 — Async Idempotent Processing
+    loop fixedDelay = 500 ms
+        Worker->>DB: SELECT ... FOR UPDATE SKIP LOCKED<br/>(status='RECEIVED' AND attempts under MAX_ATTEMPTS)
+        alt No event available
+            DB-->>Worker: empty
+        else Event claimed
+            DB-->>Worker: WebhookEvent row locked
+            Worker->>DB: UPDATE status='PROCESSING', attempts += 1
+
+            Worker->>Disp: dispatch(event)
+            Disp->>Disp: pick first strategy where supports(eventType)
+            Disp->>Strat: process(event)
+
+            Strat->>DB: SELECT PaymentOrder by razorpay_order_id
+
+            alt PaymentOrder.status == 'PAID'<br/>(race won by client /verify)
+                Strat->>Strat: Skip — already credited (idempotent)
+            else PaymentOrder needs credit
+                Strat->>DB: UPDATE payment_order SET status='PAID', razorpay_payment_id
+                Strat->>Wallet: topUp(req, key="rzp_webhook_{paymentId}")
+                Note right of Wallet: WalletOperationRegistry → TopUpWalletOperation<br/>→ WalletTransferService<br/>(pessimistic lock, 1 txn, 2 ledger entries)
+                Wallet-->>Strat: success
+            end
+
+            alt Strategy succeeded
+                Worker->>DB: UPDATE status='PROCESSED', processed_at=NOW()
+            else Strategy threw
+                Worker->>DB: UPDATE status='FAILED', failure_reason
+                Note right of Worker: Re-tried until attempts == MAX_ATTEMPTS (3)
+            end
         end
-        
-        Worker->>DB: UPDATE status='PROCESSED', processed_at=NOW()
-        Note right of Worker: Transaction Commits, Row Lock Released
+        Note right of Worker: Transaction commits → row lock released
     end
 ```
 
@@ -332,8 +438,10 @@ sequenceDiagram
 Relying solely on client-side confirmation creates a critical vulnerability: if a user's browser crashes after payment but before the `/verify` call, funds are deducted without crediting the wallet. To ensure absolute ledger reconciliation, this project implements the **Transactional Inbox Pattern**:
 
 *   **Atomic Ingestion:** Raw JSONB payloads are cryptographically verified (HMAC-SHA256) and immediately persisted as `RECEIVED`. This ensures a near-instant 200 OK response to Razorpay, preventing gateway timeouts.
-*   **Scalable Processing:** A background engine uses PostgreSQL's `SELECT FOR UPDATE SKIP LOCKED` to process events asynchronously and horizontally across service instances.
-*   **Zero-Loss Resilience:** The architecture guarantees zero data loss, handles transient failures via a Dead Letter Queue (DLQ), and ensures idempotent wallet crediting even during severe network partitions or client drop-offs.
+*   **Scalable Processing:** `WebhookPollerJob` uses PostgreSQL's `SELECT FOR UPDATE SKIP LOCKED` to process events asynchronously and horizontally across service instances without lock contention.
+*   **Bounded Retries:** Each event has a `processing_attempts` counter; the poller stops claiming rows that have already hit `MAX_ATTEMPTS = 3`, parking them as `FAILED` for manual reconciliation (a future DLQ hook).
+*   **Idempotent Credits:** The strategy uses `rzp_webhook_{paymentId}` as the wallet idempotency key (distinct from `rzp_{paymentId}` used by the client-side `/verify` flow). Combined with the `PaymentOrder.status == PAID` short-circuit, the wallet is credited exactly once even if both paths race.
+*   **Open for Extension:** Handling a new Razorpay event (`refund.processed`, `order.paid`, etc.) is just a new `WebhookHandlerStrategy` bean — the dispatcher and poller stay untouched.
 
 
 ---
