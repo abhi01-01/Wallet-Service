@@ -7,7 +7,7 @@ import com.wallet.walletservice.domain.enums.PaymentOrderStatus;
 import com.wallet.walletservice.dto.request.TopUpRequest;
 import com.wallet.walletservice.exception.PaymentException;
 import com.wallet.walletservice.repository.PaymentOrderRepository;
-import com.wallet.walletservice.service.WalletService;
+import com.wallet.walletservice.service.wallet.WalletService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;

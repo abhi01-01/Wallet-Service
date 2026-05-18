@@ -5,6 +5,7 @@ import com.wallet.walletservice.repository.AssetTypeRepository;
 import com.wallet.walletservice.repository.LedgerEntryRepository;
 import com.wallet.walletservice.repository.TransactionRepository;
 import com.wallet.walletservice.repository.WalletRepository;
+import com.wallet.walletservice.service.wallet.WalletService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;

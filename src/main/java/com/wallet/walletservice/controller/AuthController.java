@@ -2,7 +2,7 @@ package com.wallet.walletservice.controller;
 
 import com.wallet.walletservice.dto.request.*;
 import com.wallet.walletservice.dto.response.AuthResponse;
-import com.wallet.walletservice.service.AuthService;
+import com.wallet.walletservice.service.auth.AuthService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
