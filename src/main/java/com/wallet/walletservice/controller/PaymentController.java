@@ -4,7 +4,7 @@ import com.wallet.walletservice.dto.request.PaymentOrderRequest;
 import com.wallet.walletservice.dto.request.PaymentVerifyRequest;
 import com.wallet.walletservice.dto.response.ApiResponse;
 import com.wallet.walletservice.dto.response.PaymentOrderResponse;
-import com.wallet.walletservice.service.PaymentService;
+import com.wallet.walletservice.service.payment.PaymentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
