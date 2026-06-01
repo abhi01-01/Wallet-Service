@@ -8,9 +8,10 @@ import com.wallet.walletservice.repository.LedgerEntryRepository;
 import com.wallet.walletservice.repository.TransactionRepository;
 import com.wallet.walletservice.repository.WalletRepository;
 import com.wallet.walletservice.service.wallet.support.WalletProvider;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -38,8 +39,18 @@ class WalletTransferServiceTest {
     @Mock
     private WalletProvider walletProvider;
 
-    @InjectMocks
     private WalletTransferService walletTransferService;
+
+    @BeforeEach
+    void setUp() {
+        walletTransferService = new WalletTransferService(
+                walletRepository,
+                transactionRepository,
+                ledgerEntryRepository,
+                walletProvider,
+                new SimpleMeterRegistry()
+        );
+    }
 
     @Test
     void transfer_WhenIdempotencyKeyExists_ReturnsExistingTransactionWithoutMutation() {

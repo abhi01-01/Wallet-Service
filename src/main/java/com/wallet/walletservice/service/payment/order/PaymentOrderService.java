@@ -35,6 +35,7 @@ public class PaymentOrderService {
                 .build();
         paymentOrderRepository.save(paymentOrder);
 
+        log.info("Order created for user={} with razorpayOrderId={}", userId, paymentOrder.getRazorpayOrderId());
         return responseMapper.toResponse(paymentOrder, PaymentConstants.DEFAULT_CURRENCY);
     }
 

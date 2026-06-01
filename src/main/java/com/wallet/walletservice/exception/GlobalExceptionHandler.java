@@ -16,7 +16,8 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
-import java.util.stream.Collectors;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 @RestControllerAdvice
 @Slf4j
@@ -54,6 +55,13 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<?>> handleAuth(AuthException ex) {
         log.warn("Auth Exception: {}", ex.getMessage());
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    @ExceptionHandler(GoogleAuthException.class)
+    public ResponseEntity<ApiResponse<?>> handleGoogleAuth(GoogleAuthException ex) {
+        log.warn("Google Auth Exception: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(ApiResponse.error(ex.getMessage()));
     }
 
@@ -102,11 +110,12 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<?>> handleValidation(MethodArgumentNotValidException ex) {
-        String errors = ex.getBindingResult().getFieldErrors().stream()
-                .map(FieldError::getDefaultMessage)
-                .collect(Collectors.joining(", "));
-        log.warn("Validation Failed: {}", errors);
-        return ResponseEntity.badRequest().body(ApiResponse.error(errors));
+        Map<String, String> errors = new LinkedHashMap<>();
+        for (FieldError fieldError : ex.getBindingResult().getFieldErrors()) {
+            errors.putIfAbsent(fieldError.getField(), fieldError.getDefaultMessage());
+        }
+        log.warn("Validation failed: {}", errors);
+        return ResponseEntity.badRequest().body(ApiResponse.error("Validation failed", errors));
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
