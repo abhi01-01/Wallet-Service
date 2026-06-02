@@ -4,7 +4,7 @@ import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
 import com.google.api.client.googleapis.auth.oauth2.GoogleIdTokenVerifier;
 import com.google.api.client.http.javanet.NetHttpTransport;
 import com.google.api.client.json.gson.GsonFactory;
-import com.wallet.walletservice.exception.AuthException;
+import com.wallet.walletservice.exception.GoogleAuthException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -24,24 +24,28 @@ public class GoogleIdentityVerifier {
     }
 
     public GoogleIdentity verify(String idTokenValue) {
-        GoogleIdTokenVerifier verifier = new GoogleIdTokenVerifier.Builder(new NetHttpTransport(), new GsonFactory())
-                .setAudience(Collections.singletonList(googleClientId))
-                .build();
-
         try {
-            GoogleIdToken idToken = verifier.verify(idTokenValue);
+            GoogleIdToken idToken = googleIdTokenVerifier().verify(idTokenValue);
             if (idToken == null) {
-                throw new AuthException("Invalid Google ID token.");
+                throw new GoogleAuthException("Invalid Google ID token.");
             }
 
             GoogleIdToken.Payload payload = idToken.getPayload();
             return new GoogleIdentity(payload.getSubject(), payload.getEmail());
+        } catch (IllegalArgumentException e) {
+            log.warn("Malformed Google ID token received");
+            throw new GoogleAuthException("Invalid Google ID token.");
+        } catch (GoogleAuthException e) {
+            throw e;
         } catch (Exception e) {
-            log.error("Google token verification failed", e);
-            if (e instanceof AuthException) {
-                throw (AuthException) e;
-            }
-            throw new AuthException("Google authentication failed: " + e.getMessage());
+            log.warn("Google token verification failed: {}", e.getMessage());
+            throw new GoogleAuthException("Unable to verify Google ID token.");
         }
+    }
+
+    GoogleIdTokenVerifier googleIdTokenVerifier() {
+        return new GoogleIdTokenVerifier.Builder(new NetHttpTransport(), new GsonFactory())
+                .setAudience(Collections.singletonList(googleClientId))
+                .build();
     }
 }

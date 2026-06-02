@@ -24,7 +24,7 @@
 
 
 # Build stage
-FROM maven:3.9.6-eclipse-temurin-17-alpine AS builder
+FROM maven:3.9.6-eclipse-temurin-17 AS builder
 WORKDIR /app
 
 # Copy only the pom.xml first to leverage Docker layer caching for dependencies
@@ -36,16 +36,16 @@ COPY src ./src
 RUN mvn clean package -DskipTests -q
 
 # Runtime stage
-FROM eclipse-temurin:17-jre-alpine
+FROM eclipse-temurin:17-jre-jammy
 WORKDIR /app
 
-# Security: Run as a non-root user
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+# Security: Run as a non-root user (Updated for Ubuntu/Jammy)
+RUN groupadd --system appgroup && useradd --system --gid appgroup appuser
 COPY --from=builder /app/target/*.jar app.jar
 USER appuser
 
 # Map Render's PORT variable to Spring Boot's expected SERVER_PORT
-ENV SERVER_PORT=${PORT:-8080}
+ENV SERVER_PORT=${PORT:-8081}
 EXPOSE $SERVER_PORT
 
 #ENTRYPOINT ["java", "-jar", "app.jar"]
