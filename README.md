@@ -13,20 +13,6 @@ The important design goal is that wallet balance must be fast to read, safe to u
 
 The app now also includes payment integration. A user does not directly call the internal system top-up endpoint. Instead, the user creates a Razorpay order, completes payment on the client side, and sends the Razorpay payment details back to this service. The service verifies the Razorpay signature server-side, marks the payment order as paid, and then credits the wallet using the same internal double-entry wallet flow used by trusted system top-up. It also supports account lifecycle management, including secure logout and GDPR-compliant account closure.
 
-```mermaid
-graph LR
-    Client[Client / UI] -->|HTTP Requests| Gateway[API Gateway :8080]
-    
-    subgraph Edge Layer [Non-Blocking WebFlux]
-        Gateway -->|Check Tokens| Redis[(Redis)]
-        Redis -->|Return State| Gateway
-    end
-    
-    subgraph Private Subnet [Domain Layer]
-        Gateway -->|Allowed Requests| Wallet[Wallet Service :8081]
-    end
-```
-
 ---
 
 ## 🧭 How The Application Works
