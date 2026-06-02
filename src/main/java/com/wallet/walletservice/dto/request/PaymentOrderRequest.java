@@ -1,7 +1,7 @@
 package com.wallet.walletservice.dto.request;
 
 import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -18,7 +18,7 @@ import java.math.BigDecimal;
 public class PaymentOrderRequest {
 
     @NotNull(message = "Amount is required")
-    @Min(value = 100, message = "Amount must be greater than 100")
+    @DecimalMin(value = "100", message = "Amount must be at least 100")
     @Schema(description = "Amount to pay in paisa/lowest currency unit", example = "10000")
     private BigDecimal amount;
 

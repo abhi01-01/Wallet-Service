@@ -11,6 +11,8 @@ import com.wallet.walletservice.repository.TransactionRepository;
 import com.wallet.walletservice.repository.WalletRepository;
 import com.wallet.walletservice.service.wallet.policy.WalletTransferPolicy;
 import com.wallet.walletservice.service.wallet.support.WalletProvider;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -31,52 +33,73 @@ public class WalletTransferService {
     private final TransactionRepository transactionRepository;
     private final LedgerEntryRepository ledgerEntryRepository;
     private final WalletProvider walletProvider;
+    // 1. Inject the Telemetry Engine
+    private final MeterRegistry meterRegistry;
 
     public Transaction transfer(
             TransferCommand command,
             List<WalletTransferPolicy> policies,
             String contextLabel
     ) {
-        Optional<Transaction> existing = transactionRepository.findByIdempotencyKey(command.getIdempotencyKey());
-        if (existing.isPresent()) {
-            log.info("Duplicate {} request detected for key={}, returning cached response",
-                    contextLabel, command.getIdempotencyKey());
-            return existing.get();
+
+        try {
+            Optional<Transaction> existing = transactionRepository.findByIdempotencyKey(command.getIdempotencyKey());
+            if (existing.isPresent()) {
+                log.info("Duplicate {} request detected for key={}, returning cached response",
+                        contextLabel, command.getIdempotencyKey());
+                return existing.get();
+            }
+
+            Wallet debitWallet = walletProvider.findOrCreate(command.getDebitOwnerId(), command.getAssetCode());
+            Wallet creditWallet = walletProvider.findOrCreate(command.getCreditOwnerId(), command.getAssetCode());
+
+            /*
+             * Deadlock avoidance: always acquire wallet locks in ascending ID order.
+             * Concurrent transfers touching the same wallet pair then wait in the same
+             * order instead of forming a circular wait.
+             */
+            Map<Long, Wallet> lockedWallets = lockWallets(sortedIds(debitWallet.getId(), creditWallet.getId()));
+            debitWallet = lockedWallets.get(debitWallet.getId());
+            creditWallet = lockedWallets.get(creditWallet.getId());
+
+            for (WalletTransferPolicy policy : policies) {
+                policy.validate(command, debitWallet, creditWallet);
+            }
+
+            debit(debitWallet, command.getAmount());
+            credit(creditWallet, command.getAmount());
+            walletRepository.saveAll(List.of(debitWallet, creditWallet));
+
+            String description = command.getProvidedDescription() != null
+                    ? command.getProvidedDescription()
+                    : command.getDefaultDescriptionSupplier().get();
+            Transaction txn = saveTransaction(command, description, debitWallet, creditWallet);
+
+            String sign = command.getTransactionType() == TransactionType.SPEND ? "-" : "+";
+            String user = command.getTransactionType() == TransactionType.SPEND
+                    ? command.getDebitOwnerId()
+                    : command.getCreditOwnerId();
+            log.info("{} success: txn={}, user={}, {}{} {}",
+                    contextLabel, txn.getId(), user, sign, command.getAmount(), command.getAssetCode());
+
+            // 2. Symmetric Success Metric
+            meterRegistry.counter("business.ledger.transfers",
+                    "operation", "transfer",
+                    "status", "success",
+                    "error", "none"
+            ).increment();
+
+            return txn;
+        }catch (Exception e) {
+            // 3. Symmetric Failure Metric (Captures exact exceptions like InsufficientBalanceException)
+            meterRegistry.counter("business.ledger.transfers",
+                    "operation", "transfer",
+                    "status", "failed",
+                    "error", e.getClass().getSimpleName()
+            ).increment();
+
+            throw e;
         }
-
-        Wallet debitWallet = walletProvider.findOrCreate(command.getDebitOwnerId(), command.getAssetCode());
-        Wallet creditWallet = walletProvider.findOrCreate(command.getCreditOwnerId(), command.getAssetCode());
-
-        /*
-         * Deadlock avoidance: always acquire wallet locks in ascending ID order.
-         * Concurrent transfers touching the same wallet pair then wait in the same
-         * order instead of forming a circular wait.
-         */
-        Map<Long, Wallet> lockedWallets = lockWallets(sortedIds(debitWallet.getId(), creditWallet.getId()));
-        debitWallet = lockedWallets.get(debitWallet.getId());
-        creditWallet = lockedWallets.get(creditWallet.getId());
-
-        for (WalletTransferPolicy policy : policies) {
-            policy.validate(command, debitWallet, creditWallet);
-        }
-
-        debit(debitWallet, command.getAmount());
-        credit(creditWallet, command.getAmount());
-        walletRepository.saveAll(List.of(debitWallet, creditWallet));
-
-        String description = command.getProvidedDescription() != null
-                ? command.getProvidedDescription()
-                : command.getDefaultDescriptionSupplier().get();
-        Transaction txn = saveTransaction(command, description, debitWallet, creditWallet);
-
-        String sign = command.getTransactionType() == TransactionType.SPEND ? "-" : "+";
-        String user = command.getTransactionType() == TransactionType.SPEND
-                ? command.getDebitOwnerId()
-                : command.getCreditOwnerId();
-        log.info("{} success: txn={}, user={}, {}{} {}",
-                contextLabel, txn.getId(), user, sign, command.getAmount(), command.getAssetCode());
-
-        return txn;
     }
 
     private List<Long> sortedIds(Long... ids) {
@@ -84,8 +107,19 @@ public class WalletTransferService {
     }
 
     private Map<Long, Wallet> lockWallets(List<Long> ids) {
-        List<Wallet> wallets = walletRepository.findAllByIdForUpdate(ids);
-        return wallets.stream().collect(Collectors.toMap(Wallet::getId, w -> w));
+        // 4. Start the Micrometer Timer precisely before the DB call
+        Timer.Sample lockTimer = Timer.start(meterRegistry);
+        try {
+            List<Wallet> wallets = walletRepository.findAllByIdForUpdate(ids);
+            return wallets.stream().collect(Collectors.toMap(Wallet::getId, w -> w));
+        }finally {
+            // 5. Stop the timer and record the duration, attaching dimensions
+            lockTimer.stop(Timer.builder("db.lock.wait")
+                    .description("Time spent waiting for Postgres row-level pessimistic locks")
+                    .tag("lock_type", "db_row")
+                    .tag("entity", "wallet")
+                    .register(meterRegistry));
+        }
     }
 
     private void debit(Wallet wallet, BigDecimal amount) {

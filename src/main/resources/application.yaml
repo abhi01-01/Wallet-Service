@@ -1,3 +1,4 @@
+#file: noinspection YAMLSchemaValidation
 spring:
   application:
     name: WalletService
@@ -43,7 +44,7 @@ spring:
             client-id: ${GOOGLE_CLIENT_ID}
             client-secret: ${GOOGLE_CLIENT_SECRET}
 server:
-  port: ${SERVER_PORT:8080}
+  port: ${SERVER_PORT:8081}
 
 jwt:
   secret: ${JWT_SECRET}
@@ -64,16 +65,11 @@ logging:
   level:
     root: INFO
     com.wallet.walletservice: INFO
-
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health
-  endpoint:
-    health:
-      probes:
-        enabled: true
+    org.springframework.web.servlet.mvc.method.annotation.ExceptionHandlerExceptionResolver: ERROR
+  # Open telemetry logging pattern
+#  pattern:
+#    correlation: "[${spring.application.name:},%X{traceId:-},%X{spanId:-}] "
+#  include-application-name: false
 
 razorpay:
   key:
@@ -91,3 +87,38 @@ brevo:
     key: ${BREVO_API_KEY}
     sender-email: ${BREVO_SENDER_EMAIL}
     sender-name: ${MAIL_SENDER_NAME}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # Expose prometheus alongside your existing openapi whitelist
+        include: health,info,openapi,swagger-ui,prometheus
+  endpoint:
+    prometheus:
+      access: unrestricted
+    health:
+      probes:
+        enabled: true
+      show-details: always
+
+  # Metric Multi-Dimensional Tagging
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        # CRITICAL: Forces Tomcat to calculate precise latency percentiles (p95, p99)
+        http:
+          server:
+            requests: true
+
+  # Distributed Tracing Configuration
+  tracing:
+    sampling:
+      probability: 1.0 # 100% trace sampling for Phase 1 development
+
+  otlp:
+    metrics:
+      export:
+        enabled: false    # CRITICAL: Disables OTLP metrics. We strictly use Prometheus for this.

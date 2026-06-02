@@ -5,9 +5,10 @@ import com.wallet.walletservice.domain.enums.PaymentOrderStatus;
 import com.wallet.walletservice.exception.PaymentException;
 import com.wallet.walletservice.repository.PaymentOrderRepository;
 import com.wallet.walletservice.service.payment.gateway.PaymentSignatureVerifier;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -33,8 +34,20 @@ class PaymentVerificationServiceTest {
     @Mock
     private WalletCreditService walletCreditService;
 
-    @InjectMocks
     private PaymentVerificationService paymentVerificationService;
+    private SimpleMeterRegistry meterRegistry;
+
+    @BeforeEach
+    void setUp() {
+        meterRegistry = new SimpleMeterRegistry();
+        paymentVerificationService = new PaymentVerificationService(
+                paymentOrderRepository,
+                signatureVerifier,
+                paymentUserGuard,
+                walletCreditService,
+                meterRegistry
+        );
+    }
 
     @Test
     void verifyPayment_WhenSignatureIsValid_MarksPaidAndCreditsWallet() {
@@ -49,6 +62,11 @@ class PaymentVerificationServiceTest {
         assertEquals("payment-1", order.getRazorpayPaymentId());
         verify(paymentOrderRepository).save(order);
         verify(walletCreditService).creditVerifiedPayment(order, "payment-1");
+        assertEquals(1.0, meterRegistry.counter("business.payment.orders",
+                "status", "success",
+                "gateway", "razorpay",
+                "reason", "signature_passed"
+        ).count());
     }
 
     @Test
@@ -65,6 +83,11 @@ class PaymentVerificationServiceTest {
         assertEquals(PaymentOrderStatus.FAILED, order.getStatus());
         verify(paymentOrderRepository).save(order);
         verifyNoInteractions(walletCreditService);
+        assertEquals(1.0, meterRegistry.counter("business.payment.orders",
+                "status", "failed",
+                "gateway", "razorpay",
+                "reason", PaymentException.class.getSimpleName()
+        ).count());
     }
 
     @Test
@@ -76,6 +99,17 @@ class PaymentVerificationServiceTest {
 
         verify(paymentOrderRepository, never()).findByRazorpayPaymentId("payment-1");
         verifyNoInteractions(signatureVerifier, walletCreditService);
+        assertEquals(1.0, meterRegistry.counter("business.payment.orders",
+                "status", "already_paid",
+                "gateway", "razorpay",
+                "reason", "signature_processed"
+        ).count());
+        assertEquals(0.0, meterRegistry.find("business.payment.orders")
+                .tag("status", "failed")
+                .counters()
+                .stream()
+                .mapToDouble(counter -> counter.count())
+                .sum());
     }
 
     private PaymentOrder order(PaymentOrderStatus status) {
