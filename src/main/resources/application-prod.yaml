@@ -21,3 +21,6 @@ spring:
 
 server:
   shutdown: graceful
+
+gateway:
+  internal-secret: ${GATEWAY_INTERNAL_SECRET:default-edge-secret-string-123}
