@@ -91,6 +91,7 @@ brevo:
 management:
   endpoints:
     web:
+      base-path: /actuator # Inherited by default and test profiles automatically
       exposure:
         # Expose prometheus alongside your existing openapi whitelist
         include: health,info,openapi,swagger-ui,prometheus

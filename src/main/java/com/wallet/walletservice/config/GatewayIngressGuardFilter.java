@@ -22,7 +22,7 @@ public class GatewayIngressGuardFilter extends OncePerRequestFilter {
     @Value("${gateway.internal-secret:default-edge-secret-string-123}")
     private String expectedSecret;
 
-    @Value("${management.endpoints.web.base-path}")
+    @Value("${management.endpoints.web.base-path:/actuator}")
     private String obscureBasePath;
 
     @Override
