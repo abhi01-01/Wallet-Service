@@ -22,14 +22,26 @@ public class GatewayIngressGuardFilter extends OncePerRequestFilter {
     @Value("${gateway.internal-secret:default-edge-secret-string-123}")
     private String expectedSecret;
 
+    @Value("${management.endpoints.web.base-path}")
+    private String obscureBasePath;
+
     @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     @NonNull HttpServletResponse response,
                                     @NonNull FilterChain filterChain) throws ServletException, IOException {
 
-        String incomingToken = request.getHeader("X-Gateway-Token");
 
-        // Short-circuit if the token is missing or compromised
+        // Platform Whitelist: Match the exact hidden health check endpoint
+        String requestUri = request.getRequestURI();
+        String expectedHealthPath = obscureBasePath + "/health";
+        if (requestUri.equals(expectedHealthPath)) {
+            log.debug("Perimeter Guard Bypass: Verified platform health probe.");
+            filterChain.doFilter(request, response);
+            return;
+        }
+
+        // Perimeter Validation for Core Financial/Business APIs
+        String incomingToken = request.getHeader("X-Gateway-Token");
         if (!StringUtils.hasText(incomingToken) || !expectedSecret.equals(incomingToken)) {
             log.warn("Security Alert: Direct public ingress attempt blocked from IP: {}. Path: {}",
                     request.getRemoteAddr(), request.getRequestURI());
