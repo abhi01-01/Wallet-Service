@@ -24,3 +24,25 @@ server:
 
 gateway:
   internal-secret: ${GATEWAY_INTERNAL_SECRET:default-edge-secret-string-123}
+
+management:
+  endpoints:
+    web:
+      # 1. Relocate the base path to a cryptographically obscure shared secret string
+      base-path: /${ACTUATOR_OBSCURE_PATH:internal-probe-849284}
+      exposure:
+        # 2. Hard-limit exposure strictly to the health endpoint (hides env, metrics, beans)
+        include: health
+  endpoint:
+    health:
+      # 3. Suppress all component details globally (hides DB state, disk space, Redis details)
+      show-details: never
+
+  # Asynchronous OTLP Push Telemetry
+  otlp:
+    metrics:
+      export:
+        url: ${OTLP_GRAFANA_URL}
+        step: 15s # Metrics aggregation and transmission interval
+        headers:
+          Authorization: ${OTLP_GRAFANA_AUTH_HEADER}
