@@ -46,9 +46,10 @@ public class SecurityConfig {
     };
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, GatewayIngressGuardFilter gatewayIngressGuardFilter) {
         http
                 .csrf(AbstractHttpConfigurer::disable)
+                .addFilterBefore(gatewayIngressGuardFilter, org.springframework.security.web.header.HeaderWriterFilter.class)
                 .sessionManagement(s->s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(PUBLIC_PATHS).permitAll()
