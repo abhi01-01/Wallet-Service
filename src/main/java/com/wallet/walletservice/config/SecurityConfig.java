@@ -1,6 +1,7 @@
 package com.wallet.walletservice.config;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.boot.security.autoconfigure.actuate.web.servlet.EndpointRequest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -53,6 +54,7 @@ public class SecurityConfig {
                 .sessionManagement(s->s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(PUBLIC_PATHS).permitAll()
+                        .requestMatchers(EndpointRequest.toAnyEndpoint()).permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/wallets/topUp").hasRole("SYSTEM")
                         .requestMatchers(HttpMethod.POST, "/api/v1/wallets/bonus").hasRole("SYSTEM")
                         .requestMatchers(HttpMethod.POST, "/api/v1/wallets/spend").hasRole("USER")
