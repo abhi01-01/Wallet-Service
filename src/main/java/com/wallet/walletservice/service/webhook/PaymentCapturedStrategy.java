@@ -7,6 +7,7 @@ import com.wallet.walletservice.domain.enums.PaymentOrderStatus;
 import com.wallet.walletservice.dto.request.TopUpRequest;
 import com.wallet.walletservice.exception.PaymentException;
 import com.wallet.walletservice.repository.PaymentOrderRepository;
+import com.wallet.walletservice.service.payment.verification.PaymentUserGuard;
 import com.wallet.walletservice.service.wallet.WalletService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,6 +21,8 @@ public class PaymentCapturedStrategy implements WebhookHandlerStrategy{
 
     private final PaymentOrderRepository paymentOrderRepository;
     private final WalletService walletService;
+    private final PaymentUserGuard paymentUserGuard; // 1. Injected the Guard
+
 
     @Override
     public boolean supports(String eventType) {
@@ -42,6 +45,11 @@ public class PaymentCapturedStrategy implements WebhookHandlerStrategy{
             log.info("Webhook reconciliation: Order {} is already PAID. Skipping.", razorpayOrderId);
             return;
         }
+
+        // fix. User Guard Validation (CRITICAL FIX)
+        // Ensures closed or non-existent accounts do not receive post-closure webhook credits.
+        // If this throws an AuthException, the execution halts, preventing the state transition and credit.
+        paymentUserGuard.ensureUserCanReceivePaymentCredit(paymentOrder.getUserId());
 
         // 2. State Transition
         paymentOrder.setRazorpayPaymentId(razorpayPaymentId);
