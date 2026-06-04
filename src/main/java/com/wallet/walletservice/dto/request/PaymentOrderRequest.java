@@ -18,8 +18,8 @@ import java.math.BigDecimal;
 public class PaymentOrderRequest {
 
     @NotNull(message = "Amount is required")
-    @DecimalMin(value = "100", message = "Amount must be at least 100")
-    @Schema(description = "Amount to pay in paisa/lowest currency unit", example = "10000")
+    @DecimalMin(value = "100", message = "Amount must be at least 100 INR")
+    @Schema(description = "Amount to pay in INR major units. The Razorpay gateway adapter converts this value to paise before creating the order.", example = "100.00")
     private BigDecimal amount;
 
     @NotNull(message = "Asset code is required")

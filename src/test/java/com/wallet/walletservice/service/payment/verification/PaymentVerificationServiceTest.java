@@ -5,6 +5,7 @@ import com.wallet.walletservice.domain.enums.PaymentOrderStatus;
 import com.wallet.walletservice.exception.PaymentException;
 import com.wallet.walletservice.repository.PaymentOrderRepository;
 import com.wallet.walletservice.service.payment.gateway.PaymentSignatureVerifier;
+import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,6 +18,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -108,8 +110,77 @@ class PaymentVerificationServiceTest {
                 .tag("status", "failed")
                 .counters()
                 .stream()
-                .mapToDouble(counter -> counter.count())
+                .mapToDouble(Counter::count)
                 .sum());
+    }
+
+    @Test
+    void verifyPayment_WhenPaymentIdAlreadyProcessed_ThrowsConflictException(){
+        // Setup: The current order is CREATED, but the razorpayPaymentId is already tied to another record
+        PaymentOrder order = order(PaymentOrderStatus.CREATED);
+        PaymentOrder existingOrder = order(PaymentOrderStatus.PAID);
+        existingOrder.setRazorpayOrderId("some-other-order");
+
+        when(paymentOrderRepository.findByRazorpayOrderId("order-1")).thenReturn(Optional.of(order));
+
+        // Mock that the payment ID already exists in the database
+        when(paymentOrderRepository.findByRazorpayPaymentId("payment-1")).thenReturn(Optional.of(existingOrder));
+
+        PaymentException exception = assertThrows(
+                PaymentException.class,
+                () -> paymentVerificationService.verifyPayment("user-1", "order-1", "payment-1", "sig-1")
+        );
+
+        // Assertions
+        assertEquals("Payment ID already processed", exception.getMessage());
+        verify(signatureVerifier, never()).isValid(any(), any(), any()); // Signature check is bypassed
+        verifyNoInteractions(walletCreditService); // Wallet is never credited
+
+        assertEquals(1.0, meterRegistry.counter("business.payment.orders",
+                "status", "failed",
+                "gateway", "razorpay",
+                "reason", PaymentException.class.getSimpleName()
+        ).count());
+    }
+
+    @Test
+    void verifyPayment_WhenOrderBelongsToDifferentUser_ThrowsForbiddenException(){
+        // Setup: Order belongs to "user-1"
+        PaymentOrder order = order(PaymentOrderStatus.CREATED);
+        when(paymentOrderRepository.findByRazorpayOrderId("order-1")).thenReturn(Optional.of(order));
+
+        // Execution: "malicious-user" tries to verify "user-1" 's order
+        PaymentException exception = assertThrows(
+                PaymentException.class,
+                () -> paymentVerificationService.verifyPayment("malicious-user", "order-1", "payment-1", "sig-1")
+        );
+
+        // Assertions
+        assertEquals("Unauthorized: Order does not belong to user", exception.getMessage());
+        verify(paymentOrderRepository, never()).save(any());
+        verifyNoInteractions(walletCreditService);
+    }
+
+    @Test
+    void verifyPayment_WhenUserGuardRejectsUser_ThrowsExceptionAndHalts(){
+        // Setup
+        PaymentOrder order = order(PaymentOrderStatus.CREATED);
+        when(paymentOrderRepository.findByRazorpayOrderId("order-1")).thenReturn(Optional.of(order));
+
+        // Mock the guard throwing an exception (e.g., account is closed)
+        org.mockito.Mockito.doThrow(new com.wallet.walletservice.exception.AuthException("Account is closed."))
+                .when(paymentUserGuard).ensureUserCanReceivePaymentCredit("user-1");
+
+        // Execution
+        assertThrows(
+                com.wallet.walletservice.exception.AuthException.class,
+                () -> paymentVerificationService.verifyPayment("user-1", "order-1", "payment-1", "sig-1")
+        );
+
+        // Assertions
+        verify(paymentOrderRepository, never()).save(any());
+        verify(signatureVerifier, never()).isValid(any(), any(), any());
+        verifyNoInteractions(walletCreditService);
     }
 
     private PaymentOrder order(PaymentOrderStatus status) {
