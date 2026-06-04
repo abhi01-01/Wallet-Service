@@ -20,7 +20,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @RequiredArgsConstructor
 public class SecurityConfig {
 
-    private final JwtAuthenticationFilter jwtAuthenticationFilter ;
+    private final GatewayIdentityAuthenticationFilter gatewayIdentityAuthenticationFilter ;
 
     private static final String[] PUBLIC_PATHS = { 
             "/", 
@@ -42,7 +42,7 @@ public class SecurityConfig {
             "/configuration/**", 
             "/webjars/**", 
             "/actuator/**",
-            "/api/v1/webhooks/"
+            "/api/v1/webhooks/**"         // FIX: Recursive wildcard allows Razorpay target endpoints
     };
 
     @Bean
@@ -59,7 +59,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/v1/wallets/**").hasAnyRole("USER","SYSTEM")
                         .anyRequest().authenticated()
                 )
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(gatewayIdentityAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
