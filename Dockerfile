@@ -49,6 +49,7 @@ ENV SERVER_PORT=${PORT:-8081}
 EXPOSE $SERVER_PORT
 
 #ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["java", "-XX:+UseSerialGC", "-Xmx512m", "-Xss512k", "-jar", "app.jar"]
 
 # Restrict heap to 256MB, leaving 212MB for native memory, thread stacks, and Metaspace, because Render free provides only 512MB RAM
-ENTRYPOINT ["java", "-XX:+UseSerialGC", "-Xmx256m", "-Xss512k", "-XX:MaxMetaspaceSize=128m", "-jar", "app.jar"]
+#ENTRYPOINT ["java", "-XX:+UseSerialGC", "-Xmx256m", "-Xss512k", "-XX:MaxMetaspaceSize=128m", "-jar", "app.jar"]

@@ -1,9 +1,12 @@
 package com.wallet.walletservice.service.wallet.transfer;
 
+import com.wallet.walletservice.domain.entity.AssetType;
 import com.wallet.walletservice.domain.entity.Transaction;
 import com.wallet.walletservice.domain.entity.Wallet;
+import com.wallet.walletservice.domain.enums.OwnerType;
 import com.wallet.walletservice.domain.enums.TransactionStatus;
 import com.wallet.walletservice.domain.enums.TransactionType;
+import com.wallet.walletservice.messaging.outbox.OutboxEventService;
 import com.wallet.walletservice.repository.LedgerEntryRepository;
 import com.wallet.walletservice.repository.TransactionRepository;
 import com.wallet.walletservice.repository.WalletRepository;
@@ -38,18 +41,21 @@ class WalletTransferServiceTest {
     private LedgerEntryRepository ledgerEntryRepository;
     @Mock
     private WalletProvider walletProvider;
+    @Mock
+    private OutboxEventService outboxEventService;
 
     private WalletTransferService walletTransferService;
 
     @BeforeEach
     void setUp() {
         walletTransferService = new WalletTransferService(
-                walletRepository,
-                transactionRepository,
-                ledgerEntryRepository,
-                walletProvider,
-                new SimpleMeterRegistry()
-        );
+                        walletRepository,
+                        transactionRepository,
+                        ledgerEntryRepository,
+                        walletProvider,
+                new SimpleMeterRegistry(),
+                outboxEventService
+                );
     }
 
     @Test
@@ -66,7 +72,7 @@ class WalletTransferServiceTest {
         Transaction actual = walletTransferService.transfer(command, List.of(), "TopUp");
 
         assertSame(existing, actual);
-        verifyNoInteractions(walletProvider, walletRepository, ledgerEntryRepository);
+        verifyNoInteractions(walletProvider, walletRepository, ledgerEntryRepository, outboxEventService);
     }
 
     @Test
@@ -94,7 +100,7 @@ class WalletTransferServiceTest {
         assertEquals(new BigDecimal("15.0000"), creditWallet.getBalance());
         assertEquals(TransactionType.TOPUP, actual.getTransactionType());
         assertEquals(2, actual.getLedgerEntries().size());
-        verify(walletRepository).findAllByIdForUpdate(List.of(1L, 2L));
+        verify(outboxEventService).recordWalletTransactionPosted(actual);
     }
 
     private TransferCommand command() {
@@ -113,6 +119,8 @@ class WalletTransferServiceTest {
         return Wallet.builder()
                 .id(id)
                 .ownerId(ownerId)
+                .ownerType(ownerId.equals("SYSTEM_TREASURY") ? OwnerType.SYSTEM : OwnerType.USER)
+                .assetType(AssetType.builder().id(100L).name("Gold").code("GOLD").build())
                 .balance(new BigDecimal(balance))
                 .build();
     }

@@ -35,7 +35,7 @@ public class GatewayIngressGuardFilter extends OncePerRequestFilter {
         String requestUri = request.getRequestURI();
         String expectedHealthPath = obscureBasePath + "/health";
         if (requestUri.equals(expectedHealthPath)) {
-            log.debug("Perimeter Guard Bypass: Verified platform health probe.");
+            log.trace("Perimeter Guard Bypass: Verified platform health probe.");
             filterChain.doFilter(request, response);
             return;
         }

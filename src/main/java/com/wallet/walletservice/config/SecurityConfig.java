@@ -57,6 +57,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/v1/wallets/bonus").hasRole("SYSTEM")
                         .requestMatchers(HttpMethod.POST, "/api/v1/wallets/spend").hasRole("USER")
                         .requestMatchers(HttpMethod.POST, "/api/v1/wallets/**").hasAnyRole("USER","SYSTEM")
+                        .requestMatchers(HttpMethod.GET, "/api/v1/admin/messaging/**").hasRole("SYSTEM")
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(gatewayIdentityAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

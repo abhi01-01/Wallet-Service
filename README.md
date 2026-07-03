@@ -1,10 +1,9 @@
 # 🤗  Wallet Service
 
-A Spring Boot 4 wallet backend for prepaid digital assets, real payment top-ups, double-entry accounting, OTP/Google authentication, gateway-based authorization, asynchronous webhook reconciliation, and production observability.
+A wallet backend for prepaid digital assets, real payment top-ups, double-entry accounting, OTP/Google authentication, gateway-based authorization, asynchronous webhook reconciliation, and production observability.
 
-Initial requirement: [Google Drive document](https://drive.google.com/file/d/1PTFW5_xbD04Lx3RW_QgvM-MmMYp23y78/view?usp=sharing)
 
-### <span style="color:Green">Project can be viewed at this path - [`https://wallet-api-gateway.onrender.com/swagger-ui/index.html`](https://wallet-api-gateway.onrender.com/swagger-ui/index.html) <sub>exposed deliberately</sub> </span>
+### <span style="color:Green">Project can be viewed at this path - [`https://wallet-api-gateway.onrender.com/swagger-ui/index.html`](https://wallet-api-gateway.onrender.com/swagger-ui/index.html) <sub>exposed intentionally</sub> </span>
 
 ## How The Application Works
 
