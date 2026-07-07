@@ -2,12 +2,20 @@ package com.wallet.walletservice.service.wallet.operation;
 
 import com.wallet.walletservice.domain.enums.TransactionType;
 import com.wallet.walletservice.dto.request.ForfeitRequest;
+import com.wallet.walletservice.service.wallet.policy.SufficientBalancePolicy;
+import com.wallet.walletservice.service.wallet.policy.WalletTransferPolicy;
 import com.wallet.walletservice.service.wallet.support.WalletProvider;
 import com.wallet.walletservice.service.wallet.transfer.TransferCommand;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
+
 @Component
+@RequiredArgsConstructor
 public class ForfeitWalletOperation implements WalletOperation<ForfeitRequest> {
+
+    private final SufficientBalancePolicy sufficientBalancePolicy;
 
     @Override
     public TransactionType transactionType() {
@@ -34,5 +42,10 @@ public class ForfeitWalletOperation implements WalletOperation<ForfeitRequest> {
                         request.getAmount(),
                         request.getAssetCode()))
                 .build();
+    }
+
+    @Override
+    public List<WalletTransferPolicy> policies() {
+        return List.of(sufficientBalancePolicy);
     }
 }

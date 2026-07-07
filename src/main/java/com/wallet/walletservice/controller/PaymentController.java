@@ -4,6 +4,7 @@ import com.wallet.walletservice.dto.request.PaymentOrderRequest;
 import com.wallet.walletservice.dto.request.PaymentVerifyRequest;
 import com.wallet.walletservice.dto.response.ApiResponse;
 import com.wallet.walletservice.dto.response.PaymentOrderResponse;
+import com.wallet.walletservice.domain.enums.OwnerType;
 import com.wallet.walletservice.service.payment.PaymentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -12,6 +13,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
@@ -61,14 +63,21 @@ public class PaymentController {
 
 
     @GetMapping("/order-status/{orderId}")
-    @PreAuthorize("hasRole('USER')")
+    @PreAuthorize("hasAnyRole('USER','SYSTEM')")
     @Operation(summary = "Get Payment Order Status", description = "Poll this endpoint to verify if the payment was successful.")
     public ResponseEntity<com.wallet.walletservice.dto.response.ApiResponse<PaymentOrderResponse>> getOrderStatus(
-            @AuthenticationPrincipal String useId,
-            @PathVariable String orderId
+            @AuthenticationPrincipal String userId,
+            @PathVariable String orderId,
+            Authentication authentication
     ){
-        PaymentOrderResponse response = paymentService.getOrderStatus(useId, orderId);
+        PaymentOrderResponse response = paymentService.getOrderStatus(userId, orderId, requesterOwnerType(authentication));
         return ResponseEntity.ok(com.wallet.walletservice.dto.response.ApiResponse.ok("Order status retrieved", response));
+    }
+
+    private OwnerType requesterOwnerType(Authentication authentication) {
+        boolean system = authentication.getAuthorities().stream()
+                .anyMatch(authority -> "ROLE_SYSTEM".equals(authority.getAuthority()));
+        return system ? OwnerType.SYSTEM : OwnerType.USER;
     }
 
 }

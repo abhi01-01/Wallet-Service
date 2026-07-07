@@ -6,6 +6,7 @@ import com.wallet.walletservice.domain.entity.Wallet;
 import com.wallet.walletservice.domain.enums.EntryType;
 import com.wallet.walletservice.domain.enums.TransactionStatus;
 import com.wallet.walletservice.domain.enums.TransactionType;
+import com.wallet.walletservice.messaging.outbox.OutboxEventService;
 import com.wallet.walletservice.repository.LedgerEntryRepository;
 import com.wallet.walletservice.repository.TransactionRepository;
 import com.wallet.walletservice.repository.WalletRepository;
@@ -35,6 +36,7 @@ public class WalletTransferService {
     private final WalletProvider walletProvider;
     // 1. Inject the Telemetry Engine
     private final MeterRegistry meterRegistry;
+    private final OutboxEventService outboxEventService;
 
     public Transaction transfer(
             TransferCommand command,
@@ -166,6 +168,8 @@ public class WalletTransferService {
 
         ledgerEntryRepository.saveAll(List.of(debitEntry, creditEntry));
         txn.getLedgerEntries().addAll(List.of(debitEntry, creditEntry));
+
+        outboxEventService.recordWalletTransactionPosted(txn);
         return txn;
     }
 }

@@ -37,6 +37,9 @@ spring:
             client-id: dummy-id
             client-secret: dummy-secret
 
+gateway:
+  internal-secret: test-edge-secret
+
 jwt:
   secret: dummy-secret-for-tests-only-dummy-secret-for-tests-only
   expiration-ms: 3600000
@@ -52,6 +55,13 @@ razorpay:
 wallet:
   security:
     authorized-system-ids: SYSTEM_TREASURY
+  kafka:
+    enabled: false
+    consumer:
+      audit-enabled: false
+  outbox:
+    publisher:
+      enabled: false
 
 logging:
   level:

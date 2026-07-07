@@ -2,12 +2,20 @@ package com.wallet.walletservice.service.wallet.operation;
 
 import com.wallet.walletservice.domain.enums.TransactionType;
 import com.wallet.walletservice.dto.request.BonusRequest;
+import com.wallet.walletservice.service.wallet.policy.SufficientBalancePolicy;
+import com.wallet.walletservice.service.wallet.policy.WalletTransferPolicy;
 import com.wallet.walletservice.service.wallet.support.WalletProvider;
 import com.wallet.walletservice.service.wallet.transfer.TransferCommand;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
+
 @Component
+@RequiredArgsConstructor
 public class BonusWalletOperation implements WalletOperation<BonusRequest> {
+
+    private final SufficientBalancePolicy sufficientBalancePolicy;
 
     @Override
     public TransactionType transactionType() {
@@ -35,5 +43,10 @@ public class BonusWalletOperation implements WalletOperation<BonusRequest> {
                         request.getAssetCode(),
                         request.getUserId()))
                 .build();
+    }
+
+    @Override
+    public List<WalletTransferPolicy> policies() {
+        return List.of(sufficientBalancePolicy);
     }
 }

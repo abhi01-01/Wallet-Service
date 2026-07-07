@@ -44,7 +44,7 @@ public class BrevoEmailGateway implements EmailGateway {
                     String messageId = response.body() != null
                             ? new JSONObject(response.body().string()).optString("messageId")
                             : "N/A";
-                    log.info("[EmailGateway] SUCCESS: Email sent via Brevo to {} (Message ID: {})",
+                    log.info("[EmailGateway] ACCEPTED: Brevo accepted email for {} (Message ID: {})",
                             message.getToEmail(),
                             messageId);
                 } else {

@@ -1,5 +1,5 @@
-# Handle line endings automatically
-* text=auto
+# Normalize text files in Git and check them out with LF line endings.
+* text=auto eol=lf
 
 # Ensure shell scripts always use LF (so they don't break on Linux/Prod)
 *.sh text eol=lf
