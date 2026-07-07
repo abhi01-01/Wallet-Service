@@ -14,16 +14,22 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.Arrays;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Component
 @Order(Integer.MIN_VALUE)   // Guarantees this filter runs absolutely first in the entire servlet container
 @Slf4j
 public class GatewayIngressGuardFilter extends OncePerRequestFilter {
-    @Value("${gateway.internal-secret:default-edge-secret-string-123}")
+    @Value("${gateway.internal-secret}")
     private String expectedSecret;
 
     @Value("${management.endpoints.web.base-path:/actuator}")
     private String obscureBasePath;
+
+    @Value("${gateway.public-actuator-endpoints:health,prometheus}")
+    private String publicActuatorEndpoints;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -31,11 +37,9 @@ public class GatewayIngressGuardFilter extends OncePerRequestFilter {
                                     @NonNull FilterChain filterChain) throws ServletException, IOException {
 
 
-        // Platform Whitelist: Match the exact hidden health check endpoint
         String requestUri = request.getRequestURI();
-        String expectedHealthPath = obscureBasePath + "/health";
-        if (requestUri.equals(expectedHealthPath)) {
-            log.trace("Perimeter Guard Bypass: Verified platform health probe.");
+        if (isPublicActuatorEndpoint(requestUri)) {
+            log.trace("Perimeter Guard Bypass: Verified actuator endpoint {}.", requestUri);
             filterChain.doFilter(request, response);
             return;
         }
@@ -53,5 +57,22 @@ public class GatewayIngressGuardFilter extends OncePerRequestFilter {
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    private boolean isPublicActuatorEndpoint(String requestUri) {
+        String normalizedBasePath = obscureBasePath.startsWith("/")
+                ? obscureBasePath
+                : "/" + obscureBasePath;
+
+        return publicEndpointNames().stream()
+                .map(endpoint -> normalizedBasePath + "/" + endpoint)
+                .anyMatch(endpointPath -> requestUri.equals(endpointPath) || requestUri.startsWith(endpointPath + "/"));
+    }
+
+    private Set<String> publicEndpointNames() {
+        return Arrays.stream(publicActuatorEndpoints.split(","))
+                .map(String::trim)
+                .filter(StringUtils::hasText)
+                .collect(Collectors.toSet());
     }
 }

@@ -66,7 +66,10 @@ spring:
       properties:
         max.poll.records: ${WALLET_KAFKA_MAX_POLL_RECORDS:50}
 server:
-  port: ${SERVER_PORT:8081}
+  port: ${PORT:${SERVER_PORT:8081}}
+
+gateway:
+  public-actuator-endpoints: ${GATEWAY_PUBLIC_ACTUATOR_ENDPOINTS:health,prometheus}
 
 jwt:
   secret: ${JWT_SECRET}
@@ -101,6 +104,10 @@ razorpay:
     secret: ${RAZORPAY_WEBHOOK_SECRET:}
 
 wallet:
+  async:
+    core-pool-size: ${WALLET_ASYNC_CORE_POOL_SIZE:2}
+    max-pool-size: ${WALLET_ASYNC_MAX_POOL_SIZE:8}
+    queue-capacity: ${WALLET_ASYNC_QUEUE_CAPACITY:100}
   security:
     authorized-system-ids: ${AUTHORIZED_SYSTEM_IDS:}
   kafka:

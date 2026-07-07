@@ -12,7 +12,7 @@ CREATE TABLE asset_types(
 
 CREATE TABLE wallets(
     id              BIGSERIAL PRIMARY KEY ,
-    owner_id        VARCHAR(100) NOT NULL ,     -- user UUID/TSID or "SYSTEM_TREASURY"
+    owner_id        VARCHAR(100) NOT NULL ,     -- user UUID/TSID or system account UUID
     owner_type      VARCHAR(20) NOT NULL ,      -- "USER" | "SYSTEM"
     asset_type_id   BIGINT NOT NULL REFERENCES asset_types(id),
     balance         NUMERIC(20, 4) NOT NULL DEFAULT 0 CHECK ( balance >= 0 ),    -- last line of defence : Prevents negative balance

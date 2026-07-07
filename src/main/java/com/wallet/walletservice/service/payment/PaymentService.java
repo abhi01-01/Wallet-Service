@@ -2,6 +2,7 @@ package com.wallet.walletservice.service.payment;
 
 import com.wallet.walletservice.dto.request.PaymentOrderRequest;
 import com.wallet.walletservice.dto.response.PaymentOrderResponse;
+import com.wallet.walletservice.domain.enums.OwnerType;
 import com.wallet.walletservice.service.payment.cleanup.PaymentCleanupService;
 import com.wallet.walletservice.service.payment.order.PaymentOrderService;
 import com.wallet.walletservice.service.payment.verification.PaymentVerificationService;
@@ -33,8 +34,8 @@ public class PaymentService {
     }
 
     @Transactional(readOnly = true)
-    public PaymentOrderResponse getOrderStatus(String userId, String razorpayOrderId) {
-        return paymentOrderService.getOrderStatus(userId, razorpayOrderId);
+    public PaymentOrderResponse getOrderStatus(String userId, String razorpayOrderId, OwnerType requesterOwnerType) {
+        return paymentOrderService.getOrderStatus(userId, razorpayOrderId, requesterOwnerType);
     }
 
     @Transactional
