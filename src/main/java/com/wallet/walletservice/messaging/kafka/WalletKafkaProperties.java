@@ -21,6 +21,8 @@ public class WalletKafkaProperties {
 
     private TopicSettings topicSettings = new TopicSettings();
 
+    private Consumer consumer = new Consumer();
+
     @Getter
     @Setter
     public static class Topics{
@@ -43,5 +45,14 @@ public class WalletKafkaProperties {
             configs.put("min.insync.replicas", String.valueOf(minInSyncReplicas));
             return configs;
         }
+    }
+
+    @Getter
+    @Setter
+    public static class Consumer {
+        private boolean auditEnabled = true;
+        private int concurrency = 1;
+        private long retryIntervalMs = 1_000L;
+        private int retryMaxAttempts = 3;
     }
 }
