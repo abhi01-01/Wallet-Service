@@ -71,6 +71,8 @@ public class AuthController {
         return ResponseEntity.ok(com.wallet.walletservice.dto.response.ApiResponse.ok(message));
     }
 
+    // Built temporarily when frontend was not created to test google login
+    @Deprecated
     @PostMapping("/oauth2/success")
     @Operation(summary = "OAuth2 success redirect", description = "Handles successful Google OAuth2 login and returns the generated JWT.")
     public ResponseEntity<com.wallet.walletservice.dto.response.ApiResponse<AuthResponse>> oauth2Success(@RequestParam String token){

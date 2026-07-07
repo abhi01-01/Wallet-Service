@@ -34,7 +34,7 @@ public class WalletController {
     private Set<String> authorizedSystemIds;
 
     @GetMapping("/{userId}/balance")
-    @PreAuthorize("hasRole('USER') and #userId == authentication.name")
+    @PreAuthorize("hasRole('SYSTEM') or (hasRole('USER') and #userId == authentication.name)")
     @Operation(summary = "Get wallet balances", description = "Retrieve all asset balances for the authenticated user.")
     @ApiResponses(value = {
         @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Balances retrieved successfully"),
@@ -97,6 +97,7 @@ public class WalletController {
     @Operation(summary = "Get ledger history", description = "Retrieve the transaction history for a specific asset in a user's wallet.")
     @ApiResponses(value = {
         @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Ledger history retrieved successfully"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Missing or invalid assetCode request parameter"),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Asset or Wallet not found")
     })
     public ResponseEntity<com.wallet.walletservice.dto.response.ApiResponse<List<LedgerHistoryResponse>>> getLedger(

@@ -19,11 +19,11 @@ public interface WebhookEventRepository extends JpaRepository<WebhookEvent, Long
      */
 
     @Query(value = """
-            SELECT * FROM webhook_events 
+            SELECT * FROM webhook_events\s
             WHERE status = 'RECEIVED' OR (status = 'FAILED' AND processing_attempts < :maxAttempts)
-            ORDER BY received_at ASC 
-            LIMIT 1 
+            ORDER BY received_at ASC\s
+            LIMIT 1\s
             FOR UPDATE SKIP LOCKED
-            """, nativeQuery = true)
+           \s""", nativeQuery = true)
     Optional<WebhookEvent> findNextAvailableEvent(@Param("maxAttempts") int maxAttempts);
 }

@@ -1,4 +1,3 @@
-#file: noinspection YAMLSchemaValidation
 spring:
   application:
     name: WalletService
@@ -43,8 +42,34 @@ spring:
           google:
             client-id: ${GOOGLE_CLIENT_ID}
             client-secret: ${GOOGLE_CLIENT_SECRET}
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:29092}
+    producer:
+      client-id: wallet-service-producer
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      retries: 10
+      properties:
+        enable.idempotence: true
+        max.in.flight.requests.per.connection: 5
+        delivery.timeout.ms: 120000
+        request.timeout.ms: 30000
+        linger.ms: 5
+    consumer:
+      group-id: ${WALLET_KAFKA_CONSUMER_GROUP_ID:wallet-service-audit-consumer}
+      client-id: ${WALLET_KAFKA_CONSUMER_CLIENT_ID:wallet-service-audit-consumer}
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      properties:
+        max.poll.records: ${WALLET_KAFKA_MAX_POLL_RECORDS:50}
 server:
-  port: ${SERVER_PORT:8081}
+  port: ${PORT:${SERVER_PORT:8081}}
+
+gateway:
+  public-actuator-endpoints: ${GATEWAY_PUBLIC_ACTUATOR_ENDPOINTS:health,prometheus}
 
 jwt:
   secret: ${JWT_SECRET}
@@ -79,8 +104,35 @@ razorpay:
     secret: ${RAZORPAY_WEBHOOK_SECRET:}
 
 wallet:
+  async:
+    core-pool-size: ${WALLET_ASYNC_CORE_POOL_SIZE:2}
+    max-pool-size: ${WALLET_ASYNC_MAX_POOL_SIZE:8}
+    queue-capacity: ${WALLET_ASYNC_QUEUE_CAPACITY:100}
   security:
     authorized-system-ids: ${AUTHORIZED_SYSTEM_IDS:}
+  kafka:
+    enabled: ${WALLET_KAFKA_ENABLED:true}
+    topics:
+      wallet-transaction-events: ${WALLET_TRANSACTION_EVENTS_TOPIC:wallet.transaction.events.v1}
+    topic-settings:
+      partitions: ${WALLET_KAFKA_TOPIC_PARTITIONS:3}
+      min-in-sync-replicas: ${WALLET_KAFKA_MIN_IN_SYNC_REPLICAS:1}
+      replicas: ${WALLET_KAFKA_TOPIC_REPLICAS:1}
+      retention-ms: ${WALLET_KAFKA_TOPIC_RETENTION_MS:604800000}
+      cleanup-policy: ${WALLET_KAFKA_TOPIC_CLEANUP_POLICY:delete}
+    consumer:
+      audit-enabled: ${WALLET_KAFKA_AUDIT_CONSUMER_ENABLED:true}
+      concurrency: ${WALLET_KAFKA_CONSUMER_CONCURRENCY:1}
+      retry-interval-ms: ${WALLET_KAFKA_CONSUMER_RETRY_INTERVAL_MS:1000}
+      retry-max-attempts: ${WALLET_KAFKA_CONSUMER_RETRY_MAX_ATTEMPTS:3}
+  outbox:
+    publisher:
+      enabled: ${WALLET_OUTBOX_PUBLISHER_ENABLED:true}
+      batch-size: ${WALLET_OUTBOX_BATCH_SIZE:50}
+      fixed-delay-ms: ${WALLET_OUTBOX_FIXED_DELAY_MS:2000}
+      max-attempts: ${WALLET_OUTBOX_MAX_ATTEMPTS:5}
+      retry-delay-ms: ${WALLET_OUTBOX_RETRY_DELAY_MS:60000}
+      stale-lock-timeout-ms: ${WALLET_OUTBOX_STALE_LOCK_TIMEOUT_MS:120000}
 
 brevo:
   api:

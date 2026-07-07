@@ -5,9 +5,9 @@ logging:
 
 springdoc:
   api-docs:
-    enabled: true
+    enabled: false
   swagger-ui:
-    enabled: true
+    enabled: false
 
 spring:
   web:
@@ -18,12 +18,14 @@ spring:
       include-exception: false
   lifecycle:
     timeout-per-shutdown-phase: 30s # Allows the webhook strategy 30s to finish processing
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS}
 
 server:
   shutdown: graceful
 
 gateway:
-  internal-secret: ${GATEWAY_INTERNAL_SECRET:default-edge-secret-string-123}
+  internal-secret: ${GATEWAY_INTERNAL_SECRET}
 
 management:
   endpoints:
@@ -31,8 +33,8 @@ management:
       # 1. Relocate the base path to a cryptographically obscure shared secret string
       base-path: /${ACTUATOR_OBSCURE_PATH:internal-probe-849284}
       exposure:
-        # 2. Hard-limit exposure strictly to the health endpoint (hides env, metrics, beans)
-        include: health
+        # Expose only probe and scrape endpoints. Keep env, beans, mappings, etc. closed.
+        include: health,prometheus
   endpoint:
     health:
       # 3. Suppress all component details globally (hides DB state, disk space, Redis details)
@@ -42,7 +44,8 @@ management:
   otlp:
     metrics:
       export:
-        url: ${OTLP_GRAFANA_URL}
+        enabled: ${OTLP_METRICS_ENABLED:false}
+        url: ${OTLP_GRAFANA_URL:}
         step: 15s # Metrics aggregation and transmission interval
         headers:
-          Authorization: ${OTLP_GRAFANA_AUTH_HEADER}
+          Authorization: ${OTLP_GRAFANA_AUTH_HEADER:}
