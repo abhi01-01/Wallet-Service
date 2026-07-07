@@ -23,6 +23,7 @@ class GatewayIngressGuardFilterTest {
         filter = new GatewayIngressGuardFilter();
         ReflectionTestUtils.setField(filter, "expectedSecret", "edge-secret");
         ReflectionTestUtils.setField(filter, "obscureBasePath", "/internal-probe");
+        ReflectionTestUtils.setField(filter, "publicActuatorEndpoints", "health,prometheus");
     }
 
     @Test
@@ -53,6 +54,30 @@ class GatewayIngressGuardFilterTest {
     @Test
     void doFilterInternal_WhenHealthProbePathMatches_AllowsRequestWithoutGatewayToken() throws ServletException, IOException {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/internal-probe/health");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain();
+
+        filter.doFilter(request, response, chain);
+
+        assertEquals(200, response.getStatus());
+        assertNotNull(chain.getRequest());
+    }
+
+    @Test
+    void doFilterInternal_WhenHealthSubPathMatches_AllowsRequestWithoutGatewayToken() throws ServletException, IOException {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/internal-probe/health/liveness");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain();
+
+        filter.doFilter(request, response, chain);
+
+        assertEquals(200, response.getStatus());
+        assertNotNull(chain.getRequest());
+    }
+
+    @Test
+    void doFilterInternal_WhenPrometheusPathMatches_AllowsRequestWithoutGatewayToken() throws ServletException, IOException {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/internal-probe/prometheus");
         MockHttpServletResponse response = new MockHttpServletResponse();
         MockFilterChain chain = new MockFilterChain();
 

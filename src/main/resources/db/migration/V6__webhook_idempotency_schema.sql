@@ -4,9 +4,9 @@
 
 CREATE TABLE webhook_events (
     id                  BIGSERIAL PRIMARY KEY,
-    event_id            VARCHAR(255) NOT NULL,              -- Razorpay's x-razorpay-event-id
-    event_type          VARCHAR(100) NOT NULL,              -- e.g., 'payment.captured'
-    order_id            VARCHAR(255) NOT NULL,              -- Extracted for fast lookup (nullable if the event isn't order-specific)
+    event_id            VARCHAR(255) NOT NULL,
+    event_type          VARCHAR(100) NOT NULL,
+    order_id            VARCHAR(255) NOT NULL,
     status              VARCHAR(20) NOT NULL DEFAULT 'RECEIVED'
                             CHECK (status IN ('RECEIVED', 'PROCESSING', 'PROCESSED', 'FAILED')),
     payload             JSONB NOT NULL,
@@ -17,8 +17,9 @@ CREATE TABLE webhook_events (
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Optimize for the polling query that looks for 'RECEIVED' rows
-CREATE INDEX idx_webhook_events_status_received ON webhook_events(status) WHERE status = 'RECEIVED';
--- Optimize for looking up history by order
-CREATE INDEX idx_webhook_events_order_id ON webhook_events(order_id);
+CREATE INDEX idx_webhook_events_status_received
+    ON webhook_events(status)
+    WHERE status = 'RECEIVED';
 
+CREATE INDEX idx_webhook_events_order_id
+    ON webhook_events(order_id);

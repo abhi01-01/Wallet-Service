@@ -1,7 +1,9 @@
 package com.wallet.walletservice.exception;
 
 import com.wallet.walletservice.dto.response.ApiResponse;
+import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -11,9 +13,12 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.LinkedHashMap;
@@ -118,6 +123,36 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(ApiResponse.error("Validation failed", errors));
     }
 
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ApiResponse<?>> handleMissingRequestParameter(MissingServletRequestParameterException ex) {
+        Map<String, String> errors = new LinkedHashMap<>();
+        errors.put(ex.getParameterName(), "Required request parameter is missing");
+
+        log.warn("Missing request parameter: name={}, type={}", ex.getParameterName(), ex.getParameterType());
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.error("Missing required request parameter: " + ex.getParameterName(), errors));
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiResponse<?>> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        Map<String, String> errors = new LinkedHashMap<>();
+        errors.put(ex.getName(), "Invalid value for request parameter");
+
+        log.warn("Request parameter type mismatch: name={}, value={}", ex.getName(), ex.getValue());
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.error("Invalid request parameter: " + ex.getName(), errors));
+    }
+
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<ApiResponse<?>> handleConstraintViolation(ConstraintViolationException ex) {
+        Map<String, String> errors = new LinkedHashMap<>();
+        ex.getConstraintViolations().forEach(violation ->
+                errors.putIfAbsent(violation.getPropertyPath().toString(), violation.getMessage()));
+
+        log.warn("Request constraint violation: {}", errors);
+        return ResponseEntity.badRequest().body(ApiResponse.error("Validation failed", errors));
+    }
+
     @ExceptionHandler(HttpMessageNotReadableException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ApiResponse<?> handleNotReadable(HttpMessageNotReadableException ex) {
@@ -144,6 +179,20 @@ public class GlobalExceptionHandler {
         log.warn("Endpoint Not Found: {}", ex.getResourcePath());
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(ApiResponse.error("Endpoint not found: " + ex.getResourcePath()));
+    }
+
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<ApiResponse<?>> handleResponseStatus(ResponseStatusException ex) {
+        log.warn("Request failed with status {}: {}", ex.getStatusCode(), ex.getReason());
+        return ResponseEntity.status(ex.getStatusCode())
+                .body(ApiResponse.error(ex.getReason() != null ? ex.getReason() : "Request failed"));
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiResponse<?>> handleDataIntegrityViolation(DataIntegrityViolationException ex) {
+        log.error("Database constraint violation", ex);
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.error("Request violates a data integrity constraint"));
     }
 
     @ExceptionHandler(Exception.class)

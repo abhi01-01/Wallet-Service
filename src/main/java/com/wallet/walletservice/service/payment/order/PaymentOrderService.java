@@ -1,6 +1,7 @@
 package com.wallet.walletservice.service.payment.order;
 
 import com.wallet.walletservice.domain.entity.PaymentOrder;
+import com.wallet.walletservice.domain.enums.OwnerType;
 import com.wallet.walletservice.domain.enums.PaymentOrderStatus;
 import com.wallet.walletservice.dto.request.PaymentOrderRequest;
 import com.wallet.walletservice.dto.response.PaymentOrderResponse;
@@ -39,9 +40,13 @@ public class PaymentOrderService {
         return responseMapper.toResponse(paymentOrder, PaymentConstants.DEFAULT_CURRENCY);
     }
 
-    public PaymentOrderResponse getOrderStatus(String userId, String razorpayOrderId) {
-        PaymentOrder order = paymentOrderRepository.findByRazorpayOrderIdAndUserId(razorpayOrderId, userId)
-                .orElseThrow(() -> new PaymentException("Order not found or unauthorized", HttpStatus.NOT_FOUND));
+    public PaymentOrderResponse getOrderStatus(String userId, String razorpayOrderId, OwnerType requesterOwnerType) {
+        PaymentOrder order = switch (requesterOwnerType) {
+            case SYSTEM -> paymentOrderRepository.findByRazorpayOrderId(razorpayOrderId)
+                    .orElseThrow(() -> new PaymentException("Order not found", HttpStatus.NOT_FOUND));
+            case USER -> paymentOrderRepository.findByRazorpayOrderIdAndUserId(razorpayOrderId, userId)
+                    .orElseThrow(() -> new PaymentException("Order not found or unauthorized", HttpStatus.NOT_FOUND));
+        };
 
         return responseMapper.toResponse(order, PaymentConstants.DEFAULT_CURRENCY);
     }

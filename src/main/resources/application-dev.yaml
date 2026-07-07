@@ -1,6 +1,8 @@
 spring:
   config:
     import: "optional:file:.env[.properties]"
+gateway:
+  internal-secret: ${GATEWAY_INTERNAL_SECRET:default-edge-secret-string-123}
 logging:
   level:
     root: INFO
